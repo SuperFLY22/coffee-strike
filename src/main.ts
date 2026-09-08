@@ -43,7 +43,12 @@ class CoffeeStrikeApp {
 
     this.network = new NetworkManager({
       onPacketReceived: this.onPacketReceived.bind(this),
-      onPlayerConnected: this.onPlayerConnected.bind(this),
+      onPlayerConnected: (peerId) => {
+        console.log('[Network] Peer connected:', peerId);
+        if (this.isHost) {
+          this.broadcastLobbySync();
+        }
+      },
       onPlayerDisconnected: this.onPlayerDisconnected.bind(this),
       onError: (err) => console.error('[Network Error]', err)
     });
@@ -121,6 +126,8 @@ class CoffeeStrikeApp {
     this.isHost = true;
     this.myTeam = options.gameMode === 'TEAM' ? 'RED' : 'NONE';
 
+    this.lobbyUI.renderLoading('방 개설 중...', 'WebRTC P2P 무료 시그널링 채널 초기화 중');
+
     const roomCode = this.network.generateRoomCode();
     try {
       const peerId = await this.network.createRoom(roomCode);
@@ -131,8 +138,9 @@ class CoffeeStrikeApp {
       ];
 
       this.lobbyUI.renderWaitingRoom(roomCode, true, this.lobbyPlayers, options);
-    } catch (e) {
-      alert(`방 생성 실패: ${e}`);
+    } catch (e: any) {
+      alert(`방 생성 실패: ${e.message || e}`);
+      this.lobbyUI.renderCreateRoom();
     }
   }
 
@@ -144,6 +152,8 @@ class CoffeeStrikeApp {
     this.isMultiplayer = true;
     this.isHost = false;
     this.myTeam = team;
+
+    this.lobbyUI.renderLoading('방 찾는 중...', `[${roomCode}] 호스트와 P2P 핸드셰이크 연결 중`);
 
     try {
       await this.network.joinRoom(roomCode, nickname, team);
@@ -161,8 +171,9 @@ class CoffeeStrikeApp {
       };
 
       this.lobbyUI.renderWaitingRoom(roomCode, false, this.lobbyPlayers, this.currentOptions);
-    } catch (e) {
-      alert(`방 접속 실패: 룸 코드가 올바른지 확인해주세요. (${e})`);
+    } catch (e: any) {
+      alert(`접속 실패: ${e.message || e}`);
+      this.lobbyUI.renderJoinRoom();
     }
   }
 
@@ -205,11 +216,13 @@ class CoffeeStrikeApp {
     this.game.spawnObstacles();
     this.game.start();
 
-    // 게스트들에게 게임 시작 패킷 브로드캐스트
+    // 게스트들에게 게임 시작 패킷 및 초기 월드 스냅샷 브로드캐스트
+    const initialSnapshot = this.game.createWorldSnapshot();
     this.network.broadcast({
       type: 'S2C_GAME_START',
       options: this.currentOptions,
-      assignedWeapon: 'PISTOL'
+      assignedWeapon: 'PISTOL',
+      initialSnapshot
     });
 
     // 30Hz (약 33ms) 월드 스냅샷 브로드캐스트 시작
@@ -308,6 +321,9 @@ class CoffeeStrikeApp {
       case 'S2C_GAME_START': {
         if (!this.isHost) {
           this.currentOptions = packet.options;
+          if (packet.initialSnapshot) {
+            this.game.applyWorldSnapshot(packet.initialSnapshot);
+          }
           this.startGuestGameLoop();
         }
         break;

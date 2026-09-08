@@ -47,6 +47,7 @@ export class Player {
   public fallAlpha: number = 1.0;
   public surviveTime: number = 0;
   public ringOutRank?: number; // 1이면 가장 먼저 탈락 (커피 당첨자)
+  public knockbackStunTimer: number = 0; // 피격 시 조작 제어력 감쇄 타이머
 
   // 타겟팅 정보
   public targetPlayer: Player | null = null;
@@ -109,9 +110,10 @@ export class Player {
     if (this.isFalling || this.isDead) return;
 
     if (dx !== 0 || dy !== 0) {
-      // 조이스틱 이동
-      this.x += dx * this.currentSpeed * dt;
-      this.y += dy * this.currentSpeed * dt;
+      // 피격 직후에는 저항력을 30%로 감쇄하여 넉백으로 쭉 밀려나는 쾌감 극대화
+      const controlFactor = this.knockbackStunTimer > 0 ? 0.3 : 1.0;
+      this.x += dx * this.currentSpeed * controlFactor * dt;
+      this.y += dy * this.currentSpeed * controlFactor * dt;
     }
   }
 
@@ -286,6 +288,7 @@ export class Player {
       if (this.buffs.power > 0) this.buffs.power = Math.max(0, this.buffs.power - dt);
       if (this.buffs.speed > 0) this.buffs.speed = Math.max(0, this.buffs.speed - dt);
       if (this.buffs.shield > 0) this.buffs.shield = Math.max(0, this.buffs.shield - dt);
+      if (this.knockbackStunTimer > 0) this.knockbackStunTimer = Math.max(0, this.knockbackStunTimer - dt);
 
       // 물리 관성 이동 (넉백 속도 적용)
       this.x += this.vx * dt;

@@ -20,53 +20,53 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   PISTOL: {
     name: 'Balance Pistol',
     nameKo: '밸런스 피스톨',
-    bulletSpeed: 600,
-    cooldown: 0.35,
-    impulse: 160,
+    bulletSpeed: 680,
+    cooldown: 0.32,
+    impulse: 450, // 대폭 상향 (기존 160 -> 450)
     maxAmmo: 12,
-    range: 480,
+    range: 520,
     pelletCount: 1,
     spreadAngle: 0,
-    bulletRadius: 4,
+    bulletRadius: 4.5,
     color: '#38bdf8' // sky blue
   },
   SHOTGUN: {
     name: 'Heavy Shotgun',
     nameKo: '헤비 샷건',
-    bulletSpeed: 750,
-    cooldown: 0.85,
-    impulse: 85, // 펠릿당 85 x 4 = 340
+    bulletSpeed: 800,
+    cooldown: 0.80,
+    impulse: 220, // 펠릿당 220 x 4 = 880 (기존 340 -> 880 폭발적 밀림)
     maxAmmo: 4,
-    range: 300,
+    range: 340,
     pelletCount: 4,
-    spreadAngle: 0.35, // 약 20도 부채꼴
-    bulletRadius: 3.5,
+    spreadAngle: 0.38,
+    bulletRadius: 4,
     color: '#f97316' // orange
   },
   SNIPER: {
     name: 'Sniper Rifle',
     nameKo: '저격 스나이퍼',
-    bulletSpeed: 1400,
-    cooldown: 1.30,
-    impulse: 460,
+    bulletSpeed: 1600,
+    cooldown: 1.25,
+    impulse: 1150, // 대폭 상향 (기존 460 -> 1150, 원샷 벼랑 끝 밀림)
     maxAmmo: 3,
-    range: 800,
+    range: 900,
     pelletCount: 1,
     spreadAngle: 0,
-    bulletRadius: 5,
+    bulletRadius: 6,
     color: '#ec4899' // pink laser
   },
   MACHINEGUN: {
     name: 'Rapid Machinegun',
     nameKo: '연사 머신건',
-    bulletSpeed: 750,
-    cooldown: 0.10,
-    impulse: 48,
+    bulletSpeed: 820,
+    cooldown: 0.09,
+    impulse: 140, // 대폭 상향 (기존 48 -> 140, 빠른 연속 밀림)
     maxAmmo: 35,
-    range: 400,
+    range: 440,
     pelletCount: 1,
     spreadAngle: 0.08,
-    bulletRadius: 3,
+    bulletRadius: 3.5,
     color: '#fbbf24' // amber
   }
 };

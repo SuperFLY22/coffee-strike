@@ -55,6 +55,7 @@ export class Game {
 
   // 파티클/이펙트
   private shockwaves: Array<{ x: number; y: number; radius: number; maxRadius: number; color: string; alpha: number }> = [];
+  public screenShake: number = 0; // 화면 흔들림 강도
 
   constructor(canvas: HTMLCanvasElement, container: HTMLElement) {
     this.canvas = canvas;
@@ -335,7 +336,7 @@ export class Game {
           if (this.options.gameMode === 'TEAM' && b.shooterTeam !== 'NONE' && target.team === b.shooterTeam) continue; // 아군 무시
 
           if (Physics.checkCircleCircle(b.x, b.y, b.radius, target.x, target.y, target.radius)) {
-            // 피격 성공! 넉백 부여
+            // 피격 성공! 넉백 부여 및 이동 제어력 일시 감쇄
             const hitAngle = Math.atan2(b.vy, b.vx);
             const dirX = Math.cos(hitAngle);
             const dirY = Math.sin(hitAngle);
@@ -348,11 +349,14 @@ export class Game {
               b.knockbackMultiplier
             );
 
-            // 속도 직접 갱신
-            target.vx += (dirX * b.impulse * b.knockbackMultiplier) / Math.max(0.3, target.currentMass);
-            target.vy += (dirY * b.impulse * b.knockbackMultiplier) / Math.max(0.3, target.currentMass);
+            target.knockbackStunTimer = 0.25; // 0.25초간 조이스틱 저항 감쇄로 쭉 밀림
+            if (target.id === this.myPlayerId) {
+              this.screenShake = 14;
+            } else {
+              this.screenShake = Math.max(this.screenShake, 6);
+            }
 
-            this.addShockwave(b.x, b.y, 25, b.color);
+            this.addShockwave(b.x, b.y, 28, b.color);
             sound.playHit();
             b.alive = false;
             this.bullets.splice(i, 1);
@@ -501,6 +505,14 @@ export class Game {
 
     ctx.save();
     ctx.scale(dpr, dpr);
+
+    // 피격 화면 흔들림 효과
+    if (this.screenShake > 0) {
+      const sx = (Math.random() - 0.5) * this.screenShake;
+      const sy = (Math.random() - 0.5) * this.screenShake;
+      ctx.translate(sx, sy);
+      this.screenShake = Math.max(0, this.screenShake - 0.8);
+    }
 
     // 1. 배경 심연 렌더링
     this.renderBackground(ctx);

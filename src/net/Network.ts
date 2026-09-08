@@ -1,6 +1,6 @@
 import { Peer, DataConnection } from 'peerjs';
-import { NetworkPacket, S2C_LobbySyncPacket } from './Protocol';
-import { RoomOptions, Team } from '../engine/Types';
+import { NetworkPacket } from './Protocol';
+import { Team } from '../engine/Types';
 
 export interface NetworkCallbacks {
   onPacketReceived: (packet: NetworkPacket, senderId: string) => void;
@@ -8,6 +8,13 @@ export interface NetworkCallbacks {
   onPlayerDisconnected?: (peerId: string) => void;
   onError?: (err: any) => void;
 }
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' }
+];
 
 export class NetworkManager {
   private peer: Peer | null = null;
@@ -21,7 +28,7 @@ export class NetworkManager {
   constructor(private callbacks: NetworkCallbacks) {}
 
   public generateRoomCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 헷갈리는 0, 1, I, O 제외
     let result = '';
     for (let i = 0; i < 6; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -33,23 +40,30 @@ export class NetworkManager {
    * 호스트로 방 생성
    */
   public async createRoom(roomCode: string): Promise<string> {
+    this.disconnect();
     this.isHost = true;
-    this.currentRoomCode = roomCode;
-    const peerId = `coffee-${roomCode.toLowerCase()}`;
+    this.currentRoomCode = roomCode.trim().toUpperCase();
+    const peerId = `coffee-${this.currentRoomCode.toLowerCase()}`;
 
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+
       try {
         this.peer = new Peer(peerId, {
           debug: 1,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-          }
+          config: { iceServers: ICE_SERVERS }
         });
 
+        // 10초 타임아웃
+        const timeout = setTimeout(() => {
+          if (!isResolved) {
+            reject(new Error('시그널링 서버 연결 시간 초과. 네트워크 상태를 확인하세요.'));
+          }
+        }, 10000);
+
         this.peer.on('open', (id) => {
+          isResolved = true;
+          clearTimeout(timeout);
           this.myPeerId = id;
           resolve(id);
         });
@@ -58,9 +72,14 @@ export class NetworkManager {
           this.setupGuestConnection(conn);
         });
 
-        this.peer.on('error', (err) => {
-          if (this.callbacks.onError) this.callbacks.onError(err);
-          reject(err);
+        this.peer.on('error', (err: any) => {
+          console.error('[Host Peer Error]', err);
+          if (err.type === 'unavailable-id') {
+            reject(new Error(`룸 코드(${this.currentRoomCode})가 이미 사용 중입니다. 다시 시도해주세요.`));
+          } else {
+            if (this.callbacks.onError) this.callbacks.onError(err);
+            if (!isResolved) reject(err);
+          }
         });
       } catch (e) {
         reject(e);
@@ -92,6 +111,7 @@ export class NetworkManager {
     });
 
     conn.on('error', (err) => {
+      console.warn('[Guest Connection Error]', conn.peer, err);
       this.guestConnections.delete(conn.peer);
       if (this.callbacks.onError) this.callbacks.onError(err);
     });
@@ -101,35 +121,53 @@ export class NetworkManager {
    * 게스트로 방 참가
    */
   public async joinRoom(roomCode: string, nickname: string, team: Team): Promise<void> {
+    this.disconnect();
     this.isHost = false;
-    this.currentRoomCode = roomCode;
-    const hostPeerId = `coffee-${roomCode.toLowerCase()}`;
+    this.currentRoomCode = roomCode.trim().toUpperCase();
+    const hostPeerId = `coffee-${this.currentRoomCode.toLowerCase()}`;
 
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+
       try {
         this.peer = new Peer({
           debug: 1,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-          }
+          config: { iceServers: ICE_SERVERS }
         });
+
+        const connectionTimeout = setTimeout(() => {
+          if (!isResolved) {
+            this.disconnect();
+            reject(new Error(`방(${this.currentRoomCode})을 찾을 수 없습니다. 룸 코드가 올바른지 확인하세요.`));
+          }
+        }, 9000);
 
         this.peer.on('open', (id) => {
           this.myPeerId = id;
-          const conn = this.peer!.connect(hostPeerId, { reliable: false });
+
+          // reliable: true 로 안정적 데이터 채널 오픈
+          const conn = this.peer!.connect(hostPeerId, {
+            reliable: true,
+            serialization: 'json'
+          });
           this.hostConnection = conn;
 
           conn.on('open', () => {
-            // 접속 완료 시 즉시 C2S_JOIN 전송
-            this.sendToHost({
-              type: 'C2S_JOIN',
+            isResolved = true;
+            clearTimeout(connectionTimeout);
+
+            // 접속 성공 시 C2S_JOIN 전송 (신뢰성을 위해 0.5초 간격으로 2회 연속 보장)
+            const joinPacket = {
+              type: 'C2S_JOIN' as const,
               id: this.myPeerId,
               nickname,
               team
-            });
+            };
+            conn.send(joinPacket);
+            setTimeout(() => {
+              if (conn.open) conn.send(joinPacket);
+            }, 500);
+
             resolve();
           });
 
@@ -144,14 +182,24 @@ export class NetworkManager {
           });
 
           conn.on('error', (err) => {
-            if (this.callbacks.onError) this.callbacks.onError(err);
-            reject(err);
+            console.error('[Host Conn Error]', err);
+            if (!isResolved) {
+              clearTimeout(connectionTimeout);
+              reject(new Error(`호스트 연결 실패: ${err.message || '네트워크 오류'}`));
+            }
           });
         });
 
-        this.peer.on('error', (err) => {
-          if (this.callbacks.onError) this.callbacks.onError(err);
-          reject(err);
+        this.peer.on('error', (err: any) => {
+          console.error('[Guest Peer Error]', err);
+          if (!isResolved) {
+            clearTimeout(connectionTimeout);
+            if (err.type === 'peer-unavailable') {
+              reject(new Error(`방 코드 "${this.currentRoomCode}"에 해당하는 호스트를 찾을 수 없습니다.`));
+            } else {
+              reject(err);
+            }
+          }
         });
       } catch (e) {
         reject(e);
@@ -166,7 +214,11 @@ export class NetworkManager {
     if (!this.isHost) return;
     for (const conn of this.guestConnections.values()) {
       if (conn.open) {
-        conn.send(packet);
+        try {
+          conn.send(packet);
+        } catch (e) {
+          console.warn('[Broadcast send failed]', e);
+        }
       }
     }
   }
@@ -176,22 +228,28 @@ export class NetworkManager {
    */
   public sendToHost(packet: NetworkPacket): void {
     if (this.hostConnection && this.hostConnection.open) {
-      this.hostConnection.send(packet);
+      try {
+        this.hostConnection.send(packet);
+      } catch (e) {
+        console.warn('[sendToHost failed]', e);
+      }
     }
   }
 
   public disconnect(): void {
     if (this.hostConnection) {
-      this.hostConnection.close();
+      try { this.hostConnection.close(); } catch {}
       this.hostConnection = null;
     }
     for (const conn of this.guestConnections.values()) {
-      conn.close();
+      try { conn.close(); } catch {}
     }
     this.guestConnections.clear();
     if (this.peer) {
-      this.peer.destroy();
+      try { this.peer.destroy(); } catch {}
       this.peer = null;
     }
+    this.isHost = false;
+    this.myPeerId = '';
   }
 }

@@ -48,10 +48,10 @@ function runTests() {
   assert(!noCollision.collided, 'Distant circle reports collided = false');
 
   // 6. Weapon 4 Types Configuration Validation
-  assert(WEAPON_CONFIGS.PISTOL.impulse === 160, 'Pistol impulse is 160');
+  assert(WEAPON_CONFIGS.PISTOL.impulse === 450, 'Pistol impulse is 450');
   assert(WEAPON_CONFIGS.SHOTGUN.pelletCount === 4, 'Shotgun has 4 pellets');
-  assert(WEAPON_CONFIGS.SNIPER.range === 800, 'Sniper has long range (800px)');
-  assert(WEAPON_CONFIGS.MACHINEGUN.cooldown === 0.10, 'Machinegun has rapid 0.10s cooldown');
+  assert(WEAPON_CONFIGS.SNIPER.range === 900, 'Sniper has long range (900px)');
+  assert(WEAPON_CONFIGS.MACHINEGUN.cooldown === 0.09, 'Machinegun has rapid 0.09s cooldown');
 
   console.log(`\nTest Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {

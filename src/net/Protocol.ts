@@ -38,6 +38,7 @@ export interface S2C_GameStartPacket {
   type: 'S2C_GAME_START';
   options: RoomOptions;
   assignedWeapon: any;
+  initialSnapshot?: WorldSnapshot;
 }
 
 export interface S2C_StatePacket {

@@ -36,6 +36,16 @@ export class LobbyUI {
     }
   }
 
+  public renderLoading(title: string, subtitle: string = '잠시만 기다려주세요...'): void {
+    this.rootEl.innerHTML = `
+      <div class="lobby-card" style="text-align: center; padding: 48px 24px;">
+        <div style="font-size: 42px; margin-bottom: 12px; animation: wiggle 1.2s infinite ease-in-out;">☕📡</div>
+        <h3 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 6px;">${title}</h3>
+        <p style="font-size: 13px; color: #94a3b8;">${subtitle}</p>
+      </div>
+    `;
+  }
+
   public renderMainMenu(): void {
     const randomNick = '요원_' + Math.floor(100 + Math.random() * 900);
 

@@ -9,8 +9,8 @@ export const ARENA_CONFIG = {
 };
 
 export class Physics {
-  // 선형 마찰 계수 (0.91 ~ 0.94)
-  public static readonly FRICTION = 0.92;
+  // 선형 마찰 계수 (0.95: 부드러운 빙판 미끄러짐 및 시원한 넉백)
+  public static readonly FRICTION = 0.95;
 
   /**
    * 두 점 사이의 거리 계산
@@ -116,15 +116,17 @@ export class Physics {
       p2.x += nx * overlap * r2;
       p2.y += ny * overlap * r2;
 
-      // 탄성 충돌 임펄스 분배
+      // 탄성 충돌 임펄스 분배 (강력한 스모 범핑 반발력)
       const kx = p1.vx - p2.vx;
       const ky = p1.vy - p2.vy;
-      const p = 2 * (nx * kx + ny * ky) / totalMass;
+      const relSpeed = nx * kx + ny * ky;
+      const baseBump = 80; // 부딪히기만 해도 서로 튕겨나가는 기본 임펄스
+      const p = Math.max(baseBump, 2.2 * Math.abs(relSpeed)) / totalMass;
 
-      p1.vx -= p * p2.mass * nx * 0.5;
-      p1.vy -= p * p2.mass * ny * 0.5;
-      p2.vx += p * p1.mass * nx * 0.5;
-      p2.vy += p * p1.mass * ny * 0.5;
+      p1.vx -= nx * p * p2.mass;
+      p1.vy -= ny * p * p2.mass;
+      p2.vx += nx * p * p1.mass;
+      p2.vy += ny * p * p1.mass;
     }
   }
 
