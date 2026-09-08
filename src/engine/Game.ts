@@ -48,6 +48,7 @@ export class Game {
   // 링아웃 순위 추적 (1 = 첫 탈락자 = 커피 당첨자)
   private currentEliminationRank: number = 1;
   public gameOverCallback?: (result: GameResult) => void;
+  public onPlayerEliminated?: (nickname: string, isFirst: boolean) => void;
   public isGameOver: boolean = false;
 
   // 렌더 스케일 및 뷰포트
@@ -398,8 +399,10 @@ export class Game {
       // 링아웃 콜백
       p.update(scaledDt, this.arena.radius, this.arena.halfHeight, (eliminatedPlayer) => {
         if (!eliminatedPlayer.ringOutRank) {
+          const isFirst = this.currentEliminationRank === 1;
           eliminatedPlayer.ringOutRank = this.currentEliminationRank++;
           sound.playRingOut();
+          this.onPlayerEliminated?.(eliminatedPlayer.nickname, isFirst);
         }
       });
 
@@ -505,8 +508,10 @@ export class Game {
 
               // HP 0 도달로 사망 시 링아웃 순위 부여
               if (target.isDead && !target.ringOutRank) {
+                const isFirst = this.currentEliminationRank === 1;
                 target.ringOutRank = this.currentEliminationRank++;
                 sound.playRingOut();
+                this.onPlayerEliminated?.(target.nickname, isFirst);
               }
             } else {
               // 무적 상태로 총알 튕김
@@ -720,7 +725,8 @@ export class Game {
         maxAmmo: stats.maxAmmo,
         isReloading: myPlayer.isReloading,
         reloadTimer: myPlayer.reloadTimer,
-        invincibleRemaining: myPlayer.buffs.invincible
+        invincibleRemaining: myPlayer.buffs.invincible,
+        powerRemaining: myPlayer.buffs.power
       };
     }
 
@@ -783,6 +789,7 @@ export class Game {
         this.players.set(p.id, p);
       }
 
+      const wasDead = p.isDead;
       p.hp = pSnap.hp ?? 100;
       p.maxHp = pSnap.maxHp ?? 300;
       p.heatPercent = pSnap.heatPercent ?? 0;
@@ -816,6 +823,10 @@ export class Game {
         p.buffs = pSnap.buffs;
         p.ringOutRank = pSnap.ringOutRank;
         p.surviveTime = pSnap.surviveTime;
+      }
+
+      if (!wasDead && p.isDead) {
+        this.onPlayerEliminated?.(p.nickname, p.ringOutRank === 1);
       }
     }
 

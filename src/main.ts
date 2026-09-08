@@ -87,6 +87,10 @@ class CoffeeStrikeApp {
       this.hud.showGameOver(result, this.isHost);
     };
 
+    this.game.onPlayerEliminated = (nickname: string, isFirst: boolean) => {
+      this.hud.showKillfeed(nickname, isFirst);
+    };
+
     // 초기 상태: 로비 표시, HUD 숨김
     this.hud.hide();
     this.lobbyUI.show();

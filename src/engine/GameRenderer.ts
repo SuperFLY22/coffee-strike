@@ -107,7 +107,47 @@ export class GameRenderer {
       this.renderSuddenDeathWarning(ctx, state.virtualWidth, state.arena);
     }
 
+    // 10. 장외 낙사 위험 엣지 비네트 (Edge Danger Vignette)
+    const myPlayer = state.players.get(state.myPlayerId);
+    if (myPlayer && !myPlayer.isDead && !myPlayer.isFalling) {
+      const distRatio = state.arena.getDistanceRatio(myPlayer.x, myPlayer.y);
+      if (distRatio > 0.78) {
+        this.renderEdgeDangerVignette(ctx, state.virtualWidth, state.virtualHeight, distRatio);
+      }
+    }
+
     ctx.restore();
+  }
+
+  public static renderEdgeDangerVignette(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    distRatio: number
+  ): void {
+    ctx.save();
+    const intensity = Math.min(1.0, (distRatio - 0.78) / (1.0 - 0.78));
+    const alpha = 0.2 + intensity * 0.45;
+
+    // 외곽 네온 레드 비네트
+    const grad = ctx.createRadialGradient(w / 2, h / 2, w * 0.35, w / 2, h / 2, w * 0.75);
+    grad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+    grad.addColorStop(1, `rgba(239, 68, 68, ${alpha.toFixed(2)})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // 최외곽 경고 점멸 테두리
+    ctx.strokeStyle = `rgba(255, 0, 85, ${(alpha * 1.2).toFixed(2)})`;
+    ctx.lineWidth = 4 + intensity * 6;
+    ctx.strokeRect(0, 0, w, h);
+    ctx.restore();
+
+    // 햅틱 진동 피드백 (모바일 지원 환경)
+    if (distRatio > 0.90 && typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (Math.random() < 0.12) {
+        navigator.vibrate(25);
+      }
+    }
   }
 
   public static renderBackground(

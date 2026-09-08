@@ -11,6 +11,7 @@ export interface HUDPlayerState {
   isReloading: boolean;
   reloadTimer: number;
   invincibleRemaining: number;
+  powerRemaining: number;
 }
 
 export interface HUDState {

@@ -38,6 +38,17 @@ export class LobbyUI {
     }
   }
 
+  private showLobbyToast(msg: string): void {
+    const toast = document.createElement('div');
+    toast.className = 'cyber-toast';
+    toast.textContent = msg;
+    this.rootEl.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('out');
+      setTimeout(() => toast.remove(), 400);
+    }, 2000);
+  }
+
   public renderLoading(title: string, subtitle: string = '잠시만 기다려주세요...'): void {
     this.rootEl.innerHTML = `
       <div class="lobby-card" style="text-align: center; padding: 48px 24px;">
@@ -58,16 +69,16 @@ export class LobbyUI {
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="user-nick">닉네임</label>
+          <label class="form-label" for="user-nick">요원 닉네임</label>
           <input type="text" id="user-nick" class="form-input" value="${this.nickname}" maxlength="10" placeholder="닉네임 입력">
         </div>
 
         <div class="lobby-actions">
           <button type="button" id="btn-play-single" class="btn btn-emerald">
-            🤖 싱글 플레이 (봇 3기와 즉시 테스트)
+            🤖 솔로 테스트 (봇 3기와 즉시 대전)
           </button>
 
-          <div class="divider"><span>또는 멀티플레이어</span></div>
+          <div class="divider"><span>또는 멀티플레이어 배틀</span></div>
 
           <div class="multi-btn-row">
             <button type="button" id="btn-open-create" class="btn btn-primary">
@@ -86,7 +97,6 @@ export class LobbyUI {
       this.nickname = nickInput.value.trim();
     });
 
-    // 이벤트 리스너
     this.rootEl.querySelector('#btn-play-single')?.addEventListener('click', () => {
       const nick = nickInput?.value.trim() || this.nickname || '요원';
       this.nickname = nick;
@@ -107,73 +117,111 @@ export class LobbyUI {
   }
 
   public renderCreateRoom(): void {
-    const nick = (this.rootEl.querySelector('#user-nick') as HTMLInputElement)?.value.trim() || '방장';
+    let selectedMode: GameMode = 'FFA';
+    let selectedTeamCount = 2;
+    let selectedDuration = 120;
+    let selectedScale = 1.0;
+    let selectedAmmo = 'UNLIMITED';
 
     this.rootEl.innerHTML = `
       <div class="lobby-card">
         <div class="lobby-header">
-          <h2 class="section-title">👑 멀티플레이어 방 만들기</h2>
-          <p class="game-subtitle">방장이 물리 연산과 동기화를 주도합니다</p>
+          <h2 class="section-title">👑 멀티플레이어 방 개설</h2>
+          <p class="game-subtitle">호스트 기기에서 물리 연산 및 경기 규칙을 총괄합니다</p>
         </div>
 
         <div class="options-grid">
+          <!-- 모드 선택 -->
           <div class="option-item">
             <label class="form-label">게임 모드</label>
-            <select id="opt-mode" class="form-select">
-              <option value="FFA">개인전 (FFA)</option>
-              <option value="TEAM">팀전 (Team Battle)</option>
-            </select>
+            <div class="segmented-pill-group" id="grp-mode">
+              <button type="button" class="pill-btn active" data-val="FFA">👤 개인전 (FFA)</button>
+              <button type="button" class="pill-btn" data-val="TEAM">👥 팀전 (Team)</button>
+            </div>
           </div>
 
-          <div class="option-item" id="opt-team-count-box" style="display:none;">
-            <label class="form-label">팀 수</label>
-            <select id="opt-teams" class="form-select">
-              <option value="2">2팀 (청 / 홍)</option>
-              <option value="3">3팀 (청 / 홍 / 녹)</option>
-              <option value="4">4팀 (청 / 홍 / 녹 / 황)</option>
-            </select>
+          <!-- 팀 수 (팀전 선택 시 노출) -->
+          <div class="option-item" id="opt-team-count-box" style="display: none;">
+            <label class="form-label">팀 편성 수</label>
+            <div class="segmented-pill-group" id="grp-teams">
+              <button type="button" class="pill-btn active" data-val="2">2개 팀</button>
+              <button type="button" class="pill-btn" data-val="3">3개 팀</button>
+              <button type="button" class="pill-btn" data-val="4">4개 팀</button>
+            </div>
           </div>
 
+          <!-- 경기 시간 -->
           <div class="option-item">
-            <label class="form-label">경기 시간</label>
-            <select id="opt-duration" class="form-select">
-              <option value="60">60초 (빠른 한 판)</option>
-              <option value="120" selected>120초 (정식 룰)</option>
-              <option value="180">180초 (롱게임)</option>
-            </select>
+            <label class="form-label">경기 시간 (초)</label>
+            <div class="segmented-pill-group" id="grp-duration">
+              <button type="button" class="pill-btn" data-val="60">60초</button>
+              <button type="button" class="pill-btn active" data-val="120">120초 (정식)</button>
+              <button type="button" class="pill-btn" data-val="180">180초</button>
+            </div>
           </div>
 
+          <!-- 게임 배속 -->
           <div class="option-item">
             <label class="form-label">게임 배속</label>
-            <select id="opt-scale" class="form-select">
-              <option value="1.0" selected>1.0x (표준)</option>
-              <option value="1.5">1.5x (스피디)</option>
-              <option value="2.0">2.0x (하드코어)</option>
-              <option value="3.0">3.0x (광란의 난타)</option>
-            </select>
+            <div class="segmented-pill-group" id="grp-scale">
+              <button type="button" class="pill-btn active" data-val="1.0">1.0x 표준</button>
+              <button type="button" class="pill-btn" data-val="1.5">1.5x 스피디</button>
+              <button type="button" class="pill-btn" data-val="2.0">2.0x 난타</button>
+            </div>
           </div>
 
+          <!-- 탄약 모드 -->
           <div class="option-item">
-            <label class="form-label">탄약 모드</label>
-            <select id="opt-ammo" class="form-select">
-              <option value="UNLIMITED" selected>무제한 난사</option>
-              <option value="LIMITED">탄약 제한 (1.2s 재장전)</option>
-            </select>
+            <label class="form-label">탄약 규칙</label>
+            <div class="segmented-pill-group" id="grp-ammo">
+              <button type="button" class="pill-btn active" data-val="UNLIMITED">♾️ 무제한 난사</button>
+              <button type="button" class="pill-btn" data-val="LIMITED">⏱️ 1.2s 재장전</button>
+            </div>
           </div>
         </div>
 
         <div class="btn-group-row">
-          <button type="button" id="btn-back-menu" class="btn btn-secondary">뒤로가기</button>
-          <button type="button" id="btn-confirm-create" class="btn btn-primary">룸 개설 및 대기실 입장</button>
+          <button type="button" id="btn-back-menu" class="btn btn-secondary">뒤로</button>
+          <button type="button" id="btn-confirm-create" class="btn btn-primary">방 개설 및 대기실 입장</button>
         </div>
       </div>
     `;
 
-    const modeSelect = this.rootEl.querySelector('#opt-mode') as HTMLSelectElement;
+    // 세그먼트 버튼 헬퍼
+    const bindPillGroup = (groupId: string, onSelect: (val: string) => void) => {
+      const grp = this.rootEl.querySelector(groupId);
+      if (!grp) return;
+      grp.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          grp.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const val = btn.getAttribute('data-val') || '';
+          onSelect(val);
+        });
+      });
+    };
+
     const teamCountBox = this.rootEl.querySelector('#opt-team-count-box') as HTMLElement;
 
-    modeSelect?.addEventListener('change', () => {
-      teamCountBox.style.display = modeSelect.value === 'TEAM' ? 'block' : 'none';
+    bindPillGroup('#grp-mode', (val) => {
+      selectedMode = val as GameMode;
+      teamCountBox.style.display = selectedMode === 'TEAM' ? 'block' : 'none';
+    });
+
+    bindPillGroup('#grp-teams', (val) => {
+      selectedTeamCount = parseInt(val, 10);
+    });
+
+    bindPillGroup('#grp-duration', (val) => {
+      selectedDuration = parseInt(val, 10);
+    });
+
+    bindPillGroup('#grp-scale', (val) => {
+      selectedScale = parseFloat(val);
+    });
+
+    bindPillGroup('#grp-ammo', (val) => {
+      selectedAmmo = val;
     });
 
     this.rootEl.querySelector('#btn-back-menu')?.addEventListener('click', () => {
@@ -181,62 +229,63 @@ export class LobbyUI {
     });
 
     this.rootEl.querySelector('#btn-confirm-create')?.addEventListener('click', () => {
-      const mode = modeSelect.value as GameMode;
-      const teamCount = parseInt((this.rootEl.querySelector('#opt-teams') as HTMLSelectElement).value, 10);
-      const duration = parseInt((this.rootEl.querySelector('#opt-duration') as HTMLSelectElement).value, 10);
-      const timeScale = parseFloat((this.rootEl.querySelector('#opt-scale') as HTMLSelectElement).value);
-      const ammoMode = (this.rootEl.querySelector('#opt-ammo') as HTMLSelectElement).value as any;
-
       const options: RoomOptions = {
         maxPlayers: 10,
-        gameMode: mode,
-        teamCount,
-        duration,
-        timeScale,
-        ammoMode
+        gameMode: selectedMode,
+        teamCount: selectedTeamCount,
+        duration: selectedDuration,
+        timeScale: selectedScale,
+        ammoMode: selectedAmmo as any
       };
-
       this.callbacks.onCreateRoom(this.nickname || '방장', options);
     });
   }
 
   public renderJoinRoom(): void {
     const nick = this.nickname || '참가자';
+    let selectedTeam: Team = 'NONE';
 
     this.rootEl.innerHTML = `
       <div class="lobby-card">
         <div class="lobby-header">
           <h2 class="section-title">🔗 룸 참가하기</h2>
-          <p class="game-subtitle">호스트의 룸 코드를 입력하거나 공유 링크로 접속하세요</p>
+          <p class="game-subtitle">호스트의 6자리 룸 코드를 입력하거나 초대 링크로 입장하세요</p>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="join-code-input">룸 코드 (6자리)</label>
+          <label class="form-label" for="join-code-input">룸 코드 (ROOM CODE)</label>
           <input type="text" id="join-code-input" class="form-input code-input" placeholder="예: AB12CD" maxlength="8">
         </div>
 
         <div class="form-group" id="team-select-group">
-          <label class="form-label">팀 선택</label>
-          <select id="join-team-select" class="form-select">
-            <option value="NONE">개인전 / 자동 배정</option>
-            <option value="RED">🔴 레드 팀</option>
-            <option value="BLUE">🔵 블루 팀</option>
-            <option value="GREEN">🟢 그린 팀</option>
-            <option value="YELLOW">🟡 옐로우 팀</option>
-          </select>
+          <label class="form-label">팀 지정 (팀전일 경우)</label>
+          <div class="segmented-pill-group" id="grp-join-team">
+            <button type="button" class="pill-btn active" data-val="NONE">자동 배정</button>
+            <button type="button" class="pill-btn" data-val="RED">🔴 레드</button>
+            <button type="button" class="pill-btn" data-val="BLUE">🔵 블루</button>
+            <button type="button" class="pill-btn" data-val="GREEN">🟢 그린</button>
+          </div>
         </div>
 
         <div class="btn-group-row">
-          <button id="btn-back-menu" class="btn btn-secondary">뒤로가기</button>
-          <button id="btn-confirm-join" class="btn btn-primary">접속하기</button>
+          <button id="btn-back-menu" class="btn btn-secondary">뒤로</button>
+          <button id="btn-confirm-join" class="btn btn-primary">입장하기</button>
         </div>
       </div>
     `;
 
+    const grp = this.rootEl.querySelector('#grp-join-team');
+    grp?.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        grp.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedTeam = (btn.getAttribute('data-val') || 'NONE') as Team;
+      });
+    });
+
     const codeInput = this.rootEl.querySelector('#join-code-input') as HTMLInputElement;
     const confirmBtn = this.rootEl.querySelector('#btn-confirm-join') as HTMLButtonElement;
 
-    // 소문자 입력 시 즉시 대문자로 자동 치환 및 공백 제거
     codeInput?.addEventListener('input', () => {
       const pos = codeInput.selectionStart;
       codeInput.value = codeInput.value.toUpperCase().replace(/\s+/g, '');
@@ -247,18 +296,15 @@ export class LobbyUI {
 
     const submitJoin = () => {
       const code = (codeInput?.value || '').trim().toUpperCase();
-      const team = (this.rootEl.querySelector('#join-team-select') as HTMLSelectElement).value as Team;
       if (!code) {
-        alert('룸 코드를 입력해주세요.');
+        this.showLobbyToast('룸 코드를 입력해주세요.');
         return;
       }
-      this.callbacks.onJoinRoom(nick, code, team);
+      this.callbacks.onJoinRoom(nick, code, selectedTeam);
     };
 
     codeInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        submitJoin();
-      }
+      if (e.key === 'Enter') submitJoin();
     });
 
     this.rootEl.querySelector('#btn-back-menu')?.addEventListener('click', () => {
@@ -286,20 +332,23 @@ export class LobbyUI {
             <span class="code-title">ROOM CODE</span>
             <div class="code-val-row">
               <span class="room-code-txt">${roomCode}</span>
-              <button id="btn-copy-link" class="btn btn-sm btn-ghost">📋 초대 링크 복사</button>
+              <div class="room-share-actions">
+                <button id="btn-share-link" class="btn btn-sm btn-primary">🔗 공유하기</button>
+                <button id="btn-copy-code" class="btn btn-sm btn-ghost">📋 복사</button>
+              </div>
             </div>
           </div>
           <div class="room-spec-tags">
             <span class="spec-tag">${options.gameMode === 'FFA' ? '개인전' : `팀전 (${options.teamCount}팀)`}</span>
             <span class="spec-tag">${options.duration}초</span>
             <span class="spec-tag">${options.timeScale}x 배속</span>
-            <span class="spec-tag">${options.ammoMode === 'UNLIMITED' ? '무제한 탄약' : '탄약 제한'}</span>
+            <span class="spec-tag">${options.ammoMode === 'UNLIMITED' ? '무제한 탄약' : '1.2s 재장전'}</span>
           </div>
         </div>
 
         <div class="player-list-section">
           <div class="list-header">
-            <span>참가자 명단</span>
+            <span>참가 대기 요원 명단</span>
             <span class="count-badge">${players.length} / 10명</span>
           </div>
           <div class="player-list-grid">
@@ -316,22 +365,43 @@ export class LobbyUI {
         <div class="waiting-actions">
           ${isHost ? `
             <button id="btn-start-game" class="btn btn-primary btn-large">
-              🚀 게임 시작 (Start Game)
+              🚀 작전 개시 (Start Battle)
             </button>
           ` : `
             <div class="guest-status-banner">
-              방장이 게임을 시작할 때까지 잠시 대기해주세요...
+              방장이 작전을 개시할 때까지 잠시 대기해주세요...
             </div>
           `}
         </div>
       </div>
     `;
 
-    this.rootEl.querySelector('#btn-copy-link')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(shareUrl).then(() => {
-        alert(`초대 링크가 복사되었습니다!\n${shareUrl}`);
+    // 1. Web Share API or Clipboard Copy
+    const shareBtn = this.rootEl.querySelector('#btn-share-link');
+    if (shareBtn) {
+      shareBtn.addEventListener('click', () => {
+        if (navigator.share) {
+          navigator.share({
+            title: 'Coffee Strike 초대',
+            text: `[커피 스트라이크] 오늘 커피 쏠 사람을 정하자! 룸 코드: ${roomCode}`,
+            url: shareUrl
+          }).catch(() => {});
+        } else {
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            this.showLobbyToast('📋 초대 링크가 복사되었습니다!');
+          });
+        }
       });
-    });
+    }
+
+    const copyCodeBtn = this.rootEl.querySelector('#btn-copy-code');
+    if (copyCodeBtn) {
+      copyCodeBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(roomCode).then(() => {
+          this.showLobbyToast(`코드 [${roomCode}] 복사 완료!`);
+        });
+      });
+    }
 
     if (isHost) {
       this.rootEl.querySelector('#btn-start-game')?.addEventListener('click', () => {

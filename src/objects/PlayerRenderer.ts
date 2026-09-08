@@ -47,14 +47,18 @@ export class PlayerRenderer {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.fill();
 
-    // 3. 총구(Gun Barrel) 렌더링
+    // 3. 블래스터 레일건 배럴
     ctx.save();
     ctx.rotate(player.angle);
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(8, -4, 16, 8);
-    ctx.strokeStyle = '#1e293b';
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(8, -5, 18, 10);
+    ctx.strokeStyle = '#475569';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(8, -4, 16, 8);
+    ctx.strokeRect(8, -5, 18, 10);
+
+    // 총구 에너지 코어 라인
+    ctx.fillStyle = isMe ? '#00f0ff' : baseColor;
+    ctx.fillRect(12, -1.5, 12, 3);
     ctx.restore();
 
     // 4. 플레이어 캐릭터 본체 (원형 캡슐)
@@ -63,20 +67,51 @@ export class PlayerRenderer {
     ctx.fillStyle = baseColor;
     ctx.fill();
 
-    // 테두리
-    ctx.lineWidth = isMe ? 3 : 2;
-    ctx.strokeStyle = isMe ? '#ffffff' : 'rgba(255, 255, 255, 0.7)';
+    // 내부 음영 하이라이트
+    const bodyGrad = ctx.createRadialGradient(-player.radius * 0.3, -player.radius * 0.3, 2, 0, 0, player.radius);
+    bodyGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+    bodyGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.1)');
+    bodyGrad.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 사이버 바이저 (Visor) 안광 효과
+    ctx.save();
+    ctx.rotate(player.angle);
+    ctx.beginPath();
+    ctx.ellipse(player.radius * 0.45, 0, 4, player.radius * 0.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#0b0f19';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 바이저 네온 슬릿
+    ctx.beginPath();
+    ctx.ellipse(player.radius * 0.45, 0, 1.8, player.radius * 0.35, 0, 0, Math.PI * 2);
+    ctx.fillStyle = isMe ? '#00f0ff' : '#f8fafc';
+    ctx.fill();
+    ctx.restore();
+
+    // 외곽 테두리
+    ctx.lineWidth = isMe ? 3.5 : 2;
+    ctx.strokeStyle = isMe ? '#00f0ff' : 'rgba(255, 255, 255, 0.85)';
     ctx.stroke();
 
     // 내 캐릭터인 경우 상단 역삼각형 인디케이터
     if (isMe) {
       ctx.beginPath();
-      ctx.moveTo(0, -player.radius - 16);
-      ctx.lineTo(-6, -player.radius - 24);
-      ctx.lineTo(6, -player.radius - 24);
+      ctx.moveTo(0, -player.radius - 14);
+      ctx.lineTo(-7, -player.radius - 24);
+      ctx.lineTo(7, -player.radius - 24);
       ctx.closePath();
-      ctx.fillStyle = '#38bdf8';
+      ctx.fillStyle = '#00f0ff';
       ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
 
     // 5. 닉네임 & 무기 뱃지
