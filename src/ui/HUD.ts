@@ -1,6 +1,6 @@
-import { GameResult, WEAPON_CONFIGS, WeaponType } from '../engine/Types';
-import { Game } from '../engine/Game';
+import { GameResult, WEAPON_CONFIGS } from '../engine/Types';
 import { sound } from '../engine/Audio';
+import { HUDState } from './HUDState';
 
 export class HUD {
   private container: HTMLElement;
@@ -151,9 +151,9 @@ export class HUD {
     this.countdownOverlayEl.style.display = 'none';
   }
 
-  public update(game: Game): void {
+  public update(state: HUDState): void {
     // 1. 타이머
-    const totalSec = Math.max(0, Math.ceil(game.timeRemaining));
+    const totalSec = Math.max(0, Math.ceil(state.timeRemaining));
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
     this.timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -164,36 +164,34 @@ export class HUD {
     }
 
     // 2. 생존 인원
-    const allPlayers = Array.from(game.players.values());
-    const aliveCount = allPlayers.filter(p => !p.isDead).length;
-    this.aliveEl.textContent = `${aliveCount} / ${allPlayers.length}`;
+    this.aliveEl.textContent = `${state.aliveCount} / ${state.totalCount}`;
 
     // 3. 배속 뱃지
-    this.timeScaleBadgeEl.textContent = `${game.timeScale}x 배속`;
+    this.timeScaleBadgeEl.textContent = `${state.timeScale}x 배속`;
 
     // 4. 서든데스 태그
     const sdTag = this.topBarEl.querySelector('#hud-sd-tag') as HTMLElement;
-    if (game.isSuddenDeath) {
+    if (state.isSuddenDeath) {
       sdTag.style.display = 'inline-flex';
     } else {
       sdTag.style.display = 'none';
     }
 
     // 5. 내 HP 및 무기 & 잔탄 표시
-    const myPlayer = game.players.get(game.myPlayerId);
+    const myPlayer = state.myPlayer;
     if (myPlayer) {
       const hpValEl = this.container.querySelector('#hud-hp-val') as HTMLElement;
       const hpFillEl = this.container.querySelector('#hud-hp-fill') as HTMLElement;
       const heatValEl = this.container.querySelector('#hud-heat-val') as HTMLElement;
 
       if (hpValEl && hpFillEl) {
-        if (myPlayer.buffs.invincible > 0) {
-          hpValEl.textContent = `무적 (${myPlayer.buffs.invincible.toFixed(1)}s)`;
+        if (myPlayer.invincibleRemaining > 0) {
+          hpValEl.textContent = `무적 (${myPlayer.invincibleRemaining.toFixed(1)}s)`;
           hpFillEl.style.width = '100%';
           hpFillEl.style.backgroundColor = '#f59e0b';
         } else {
           hpValEl.textContent = `${Math.round(myPlayer.hp)} HP`;
-          const hpPct = Math.max(0, Math.min(100, (myPlayer.hp / 100) * 100));
+          const hpPct = Math.max(0, Math.min(100, (myPlayer.hp / myPlayer.maxHp) * 100));
           hpFillEl.style.width = `${hpPct}%`;
           hpFillEl.style.backgroundColor = hpPct > 50 ? '#10b981' : (hpPct > 25 ? '#f59e0b' : '#ef4444');
         }
@@ -208,7 +206,7 @@ export class HUD {
       this.weaponBadgeEl.textContent = stats.nameKo;
       const ammoCountEl = this.container.querySelector('#hud-ammo-count') as HTMLElement;
 
-      if (game.isSuddenDeath || game.options.ammoMode === 'UNLIMITED') {
+      if (state.isSuddenDeath || state.ammoMode === 'UNLIMITED') {
         ammoCountEl.textContent = '무제한 ∞';
         this.ammoBarEl.style.width = '100%';
         this.ammoBarEl.style.backgroundColor = '#38bdf8';
@@ -303,6 +301,7 @@ export class HUD {
   }
 
   public show(): void {
+    this.hideGameOver();
     this.topBarEl.style.display = 'flex';
     const b = this.container.querySelector('.hud-bottom-bar') as HTMLElement;
     if (b) b.style.display = 'flex';

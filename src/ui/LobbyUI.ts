@@ -28,12 +28,13 @@ export class LobbyUI {
     this.container.appendChild(this.rootEl);
     this.renderMainMenu();
 
-    // URL 쿼리 파라미터에 ?room=xxxxxx 가 있는지 확인하여 자동 입력
+    // URL 쿼리 파라미터에 ?room=xxxxxx 가 있는지 확인하여 자동 참가 화면 진입
     const urlParams = new URLSearchParams(window.location.search);
     const roomParam = urlParams.get('room');
     if (roomParam) {
+      this.renderJoinRoom();
       const codeInput = this.rootEl.querySelector('#join-code-input') as HTMLInputElement;
-      if (codeInput) codeInput.value = roomParam.toUpperCase();
+      if (codeInput) codeInput.value = roomParam.trim().toUpperCase();
     }
   }
 
@@ -232,19 +233,39 @@ export class LobbyUI {
       </div>
     `;
 
-    this.rootEl.querySelector('#btn-back-menu')?.addEventListener('click', () => {
-      this.renderMainMenu();
+    const codeInput = this.rootEl.querySelector('#join-code-input') as HTMLInputElement;
+    const confirmBtn = this.rootEl.querySelector('#btn-confirm-join') as HTMLButtonElement;
+
+    // 소문자 입력 시 즉시 대문자로 자동 치환 및 공백 제거
+    codeInput?.addEventListener('input', () => {
+      const pos = codeInput.selectionStart;
+      codeInput.value = codeInput.value.toUpperCase().replace(/\s+/g, '');
+      if (pos !== null) {
+        codeInput.setSelectionRange(pos, pos);
+      }
     });
 
-    this.rootEl.querySelector('#btn-confirm-join')?.addEventListener('click', () => {
-      const code = (this.rootEl.querySelector('#join-code-input') as HTMLInputElement).value.trim().toUpperCase();
+    const submitJoin = () => {
+      const code = (codeInput?.value || '').trim().toUpperCase();
       const team = (this.rootEl.querySelector('#join-team-select') as HTMLSelectElement).value as Team;
       if (!code) {
         alert('룸 코드를 입력해주세요.');
         return;
       }
       this.callbacks.onJoinRoom(nick, code, team);
+    };
+
+    codeInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        submitJoin();
+      }
     });
+
+    this.rootEl.querySelector('#btn-back-menu')?.addEventListener('click', () => {
+      this.renderMainMenu();
+    });
+
+    confirmBtn?.addEventListener('click', submitJoin);
   }
 
   public renderWaitingRoom(

@@ -1,14 +1,9 @@
 // Physics and Collision Engine for Coffee Strike
 
-export const ARENA_CONFIG = {
-  centerX: 360,
-  centerY: 640,
-  baseRadius: 310,
-  baseHalfHeight: 160, // 세로 스타디움 축 확장 (총 높이 940px, 폭 620px)
-  radius: 310,
-  halfHeight: 160,
-  dangerMargin: 30
-};
+import { DEFAULT_ARENA_CONFIG, Arena } from './Arena';
+
+export { Arena, DEFAULT_ARENA_CONFIG };
+export const ARENA_CONFIG = { ...DEFAULT_ARENA_CONFIG };
 
 export class Physics {
   // 선형 마찰 계수 (0.94: 부드러운 빙판 미끄러짐 및 시원한 넉백)

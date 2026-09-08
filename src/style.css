@@ -169,6 +169,7 @@ canvas#game-canvas {
   font-family: monospace;
   font-size: 20px;
   letter-spacing: 4px;
+  text-transform: uppercase;
 }
 
 .options-grid {

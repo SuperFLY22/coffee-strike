@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npx tsx tests/engine.test.ts"
+    "test": "npx tsx tests/engine.test.ts && npx tsx tests/lifecycle.test.ts"
   },
   "dependencies": {
     "peerjs": "^1.5.4"

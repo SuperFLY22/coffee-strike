@@ -8,18 +8,21 @@ import {
   Team,
   WorldSnapshot
 } from './Types';
-import { Physics, ARENA_CONFIG } from './Physics';
+import { Physics, ARENA_CONFIG, Arena } from './Physics';
 import { Joystick } from './Joystick';
 import { Player } from '../objects/Player';
 import { Bullet } from '../objects/Bullet';
 import { Obstacle } from '../objects/Obstacle';
 import { Item } from '../objects/Item';
 import { sound } from './Audio';
+import { GameRenderer } from './GameRenderer';
+import { HUDState, HUDPlayerState } from '../ui/HUDState';
 
 export class Game {
   public canvas: HTMLCanvasElement;
   public ctx: CanvasRenderingContext2D;
   public joystick: Joystick;
+  public arena: Arena = new Arena();
 
   public options: RoomOptions = { ...DEFAULT_ROOM_OPTIONS };
   public myPlayerId: string = 'local_player';
@@ -104,8 +107,8 @@ export class Game {
       this.myPlayerId,
       myNickname,
       'NONE',
-      ARENA_CONFIG.centerX,
-      ARENA_CONFIG.centerY + 160,
+      this.arena.centerX,
+      this.arena.centerY + 160,
       randomWeapon,
       true,
       false
@@ -115,9 +118,9 @@ export class Game {
 
     // 2. 더미 봇 3기 (상단 중앙, 좌측 중앙, 우측 중앙 엄폐물 주변으로 안전 분산)
     const botConfigs = [
-      { name: '알파봇', x: ARENA_CONFIG.centerX, y: ARENA_CONFIG.centerY - 160 },
-      { name: '베타봇', x: ARENA_CONFIG.centerX - 180, y: ARENA_CONFIG.centerY },
-      { name: '감마봇', x: ARENA_CONFIG.centerX + 180, y: ARENA_CONFIG.centerY }
+      { name: '알파봇', x: this.arena.centerX, y: this.arena.centerY - 160 },
+      { name: '베타봇', x: this.arena.centerX - 180, y: this.arena.centerY },
+      { name: '감마봇', x: this.arena.centerX + 180, y: this.arena.centerY }
     ];
 
     botConfigs.forEach((bConf, idx) => {
@@ -140,12 +143,46 @@ export class Game {
   }
 
   /**
+   * 플레이어 목록을 경기장 중앙 반경(145px)에 균등 분산 스폰 (즉사 방지)
+   */
+  public spawnPlayers(
+    lobbyPlayers: Array<{ id: string; nickname: string; isHost: boolean; team: Team }>,
+    weaponsPool?: WeaponType[]
+  ): void {
+    const weapons: WeaponType[] = weaponsPool || ['PISTOL', 'SHOTGUN', 'SNIPER', 'MACHINEGUN'];
+    const totalCount = lobbyPlayers.length;
+    const angleStep = (Math.PI * 2) / Math.max(1, totalCount);
+    const startAngle = Math.PI / 2; // 하단(6시 방향) 시작
+
+    lobbyPlayers.forEach((lp, idx) => {
+      const angle = startAngle + angleStep * idx;
+      const dist = 145;
+      const x = this.arena.centerX + Math.cos(angle) * dist;
+      const y = this.arena.centerY + Math.sin(angle) * dist;
+      const weapon = weapons[Math.floor(Math.random() * weapons.length)];
+
+      const player = new Player(
+        lp.id,
+        lp.nickname,
+        lp.team,
+        x,
+        y,
+        weapon,
+        lp.isHost,
+        false
+      );
+      player.fireCooldownTimer = 1.0;
+      this.players.set(player.id, player);
+    });
+  }
+
+  /**
    * 맵 엄폐물 생성 (스타디움 최적화 바위 6개 분산 배치)
    */
   public spawnObstacles(): void {
     this.obstacles = [];
-    const cx = ARENA_CONFIG.centerX;
-    const cy = ARENA_CONFIG.centerY;
+    const cx = this.arena.centerX;
+    const cy = this.arena.centerY;
     const w = 55;
     const h = 55;
 
@@ -163,6 +200,9 @@ export class Game {
   }
 
   public resetState(): void {
+    this.arena.reset();
+    ARENA_CONFIG.radius = this.arena.radius;
+    ARENA_CONFIG.halfHeight = this.arena.halfHeight;
     this.players.clear();
     this.bullets = [];
     this.obstacles = [];
@@ -274,14 +314,9 @@ export class Game {
 
     // 2. 동적 경기장 수축 (Shrinking Ring)
     // 경기 시간 절반(60초) 경과 후부터 플랫폼이 서서히 수축: radius 310 -> 210, halfHeight 160 -> 60
-    if (this.timeRemaining < 60) {
-      const shrinkRatio = Math.max(0, this.timeRemaining / 60); // 1.0 -> 0.0
-      ARENA_CONFIG.radius = 210 + (ARENA_CONFIG.baseRadius - 210) * shrinkRatio;
-      ARENA_CONFIG.halfHeight = 60 + (ARENA_CONFIG.baseHalfHeight - 60) * shrinkRatio;
-    } else {
-      ARENA_CONFIG.radius = ARENA_CONFIG.baseRadius;
-      ARENA_CONFIG.halfHeight = ARENA_CONFIG.baseHalfHeight;
-    }
+    this.arena.updateShrink(this.timeRemaining);
+    ARENA_CONFIG.radius = this.arena.radius;
+    ARENA_CONFIG.halfHeight = this.arena.halfHeight;
 
     // 3. 10초 전 서든데스 확인 (초고속 수축 & 엄폐물 소멸)
     if (this.timeRemaining <= 10 && !this.isSuddenDeath) {
@@ -324,7 +359,7 @@ export class Game {
     const playerList = Array.from(this.players.values());
     for (const p of playerList) {
       // 링아웃 콜백
-      p.update(scaledDt, ARENA_CONFIG.radius, ARENA_CONFIG.halfHeight, (eliminatedPlayer) => {
+      p.update(scaledDt, this.arena.radius, this.arena.halfHeight, (eliminatedPlayer) => {
         if (!eliminatedPlayer.ringOutRank) {
           eliminatedPlayer.ringOutRank = this.currentEliminationRank++;
           sound.playRingOut();
@@ -484,23 +519,23 @@ export class Game {
     for (const obs of this.obstacles) {
       obs.triggerDisintegration();
     }
-    this.addShockwave(ARENA_CONFIG.centerX, ARENA_CONFIG.centerY, ARENA_CONFIG.radius, '#ef4444');
+    this.addShockwave(this.arena.centerX, this.arena.centerY, this.arena.radius, '#ef4444');
   }
 
   private spawnRandomItem(): void {
     const types: ItemType[] = ['POWER', 'HEAL', 'INVINCIBLE'];
     const selectedType = types[Math.floor(Math.random() * types.length)];
 
-    let spawnX = ARENA_CONFIG.centerX;
-    let spawnY = ARENA_CONFIG.centerY;
+    let spawnX = this.arena.centerX;
+    let spawnY = this.arena.centerY;
 
     // 최대 25회 시도하여 장애물과 겹치지 않는 안전한 바닥 탐색
     for (let attempt = 0; attempt < 25; attempt++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * (ARENA_CONFIG.radius * 0.7);
-      const halfH = (Math.random() - 0.5) * (ARENA_CONFIG.halfHeight * 1.5);
-      const x = ARENA_CONFIG.centerX + Math.cos(angle) * dist;
-      const y = ARENA_CONFIG.centerY + halfH + Math.sin(angle) * (dist * 0.4);
+      const dist = Math.random() * (this.arena.radius * 0.7);
+      const halfH = (Math.random() - 0.5) * (this.arena.halfHeight * 1.5);
+      const x = this.arena.centerX + Math.cos(angle) * dist;
+      const y = this.arena.centerY + halfH + Math.sin(angle) * (dist * 0.4);
 
       // 장애물과 충돌 검사 (안전 마진 40px)
       let hitObstacle = false;
@@ -511,7 +546,7 @@ export class Game {
         }
       }
 
-      if (!hitObstacle && !Physics.isOutOfArena(x, y, ARENA_CONFIG.radius - 20, ARENA_CONFIG.halfHeight - 10)) {
+      if (!hitObstacle && !this.arena.isOutOfBounds(x, y, -20)) {
         spawnX = x;
         spawnY = y;
         break;
@@ -605,180 +640,63 @@ export class Game {
   }
 
   public render(): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const ctx = this.ctx;
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    // 피격 화면 흔들림 효과
-    if (this.screenShake > 0) {
-      const sx = (Math.random() - 0.5) * this.screenShake;
-      const sy = (Math.random() - 0.5) * this.screenShake;
-      ctx.translate(sx, sy);
-      this.screenShake = Math.max(0, this.screenShake - 0.8);
-    }
-
-    // 1. 배경 심연 렌더링
-    this.renderBackground(ctx);
-
-    // 2. 경기장 플랫폼 렌더링
-    this.renderArena(ctx);
-
-    // 3. 엄폐물 렌더링
-    for (const obs of this.obstacles) {
-      obs.render(ctx);
-    }
-
-    // 4. 아이템 렌더링
-    for (const item of this.items) {
-      item.render(ctx);
-    }
-
-    // 5. 플레이어 렌더링 (낙하 중인 플레이어 먼저, 살아있는 플레이어 나중에)
-    const sortedPlayers = Array.from(this.players.values()).sort((a, b) => {
-      if (a.isFalling && !b.isFalling) return -1;
-      if (!a.isFalling && b.isFalling) return 1;
-      return 0;
-    });
-
-    for (const p of sortedPlayers) {
-      p.render(ctx, p.id === this.myPlayerId);
-    }
-
-    // 6. 총알 렌더링
-    for (const b of this.bullets) {
-      b.render(ctx);
-    }
-
-    // 7. 충격파 이펙트
-    for (const sw of this.shockwaves) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = sw.color;
-      ctx.globalAlpha = sw.alpha;
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 8. 가상 조이스틱 터치 링 렌더링
-    this.joystick.render(ctx);
-
-    // 9. 서든데스 경고 오버레이
-    if (this.suddenDeathWarningTimer > 0) {
-      this.renderSuddenDeathWarning(ctx);
-    }
-
-    ctx.restore();
-  }
-
-  private renderBackground(ctx: CanvasRenderingContext2D): void {
-    // 깊은 사이버 우주 심연 그라데이션
-    const bgGrad = ctx.createRadialGradient(
-      ARENA_CONFIG.centerX, ARENA_CONFIG.centerY, 100,
-      ARENA_CONFIG.centerX, ARENA_CONFIG.centerY, 700
+    GameRenderer.render(
+      {
+        ctx: this.ctx,
+        virtualWidth: this.virtualWidth,
+        virtualHeight: this.virtualHeight,
+        arena: this.arena,
+        players: this.players,
+        bullets: this.bullets,
+        obstacles: this.obstacles,
+        items: this.items,
+        shockwaves: this.shockwaves,
+        joystick: this.joystick,
+        myPlayerId: this.myPlayerId,
+        isSuddenDeath: this.isSuddenDeath,
+        suddenDeathWarningTimer: this.suddenDeathWarningTimer,
+        screenShake: this.screenShake
+      },
+      (newShake) => {
+        this.screenShake = newShake;
+      }
     );
-    bgGrad.addColorStop(0, '#090d16');
-    bgGrad.addColorStop(1, '#020408');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, this.virtualWidth, this.virtualHeight);
+  }
 
-    // 배경 그리드 패턴
-    ctx.strokeStyle = 'rgba(30, 41, 59, 0.4)';
-    ctx.lineWidth = 1;
-    const gridSize = 60;
-    for (let x = 0; x < this.virtualWidth; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, this.virtualHeight);
-      ctx.stroke();
+  /**
+   * HUD 뷰 레이어 렌더링용 상태 DTO 생성
+   */
+  public createHUDState(): HUDState {
+    const allPlayers = Array.from(this.players.values());
+    const aliveCount = allPlayers.filter(p => !p.isDead).length;
+    const myPlayer = this.players.get(this.myPlayerId);
+
+    let myPlayerState: HUDPlayerState | undefined;
+    if (myPlayer) {
+      const stats = WEAPON_CONFIGS[myPlayer.weapon];
+      myPlayerState = {
+        hp: myPlayer.hp,
+        maxHp: 100,
+        heatPercent: myPlayer.heatPercent,
+        weapon: myPlayer.weapon,
+        ammo: myPlayer.ammo,
+        maxAmmo: stats.maxAmmo,
+        isReloading: myPlayer.isReloading,
+        reloadTimer: myPlayer.reloadTimer,
+        invincibleRemaining: myPlayer.buffs.invincible
+      };
     }
-    for (let y = 0; y < this.virtualHeight; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(this.virtualWidth, y);
-      ctx.stroke();
-    }
-  }
 
-  private renderStadiumPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, h: number): void {
-    ctx.beginPath();
-    ctx.arc(cx, cy - h, r, Math.PI, 0, false);
-    ctx.lineTo(cx + r, cy + h);
-    ctx.arc(cx, cy + h, r, 0, Math.PI, false);
-    ctx.lineTo(cx - r, cy - h);
-    ctx.closePath();
-  }
-
-  private renderArena(ctx: CanvasRenderingContext2D): void {
-    const cx = ARENA_CONFIG.centerX;
-    const cy = ARENA_CONFIG.centerY;
-    const r = ARENA_CONFIG.radius;
-    const h = ARENA_CONFIG.halfHeight;
-
-    // 1. 경기장 바닥 그림자 (스타디움)
-    this.renderStadiumPath(ctx, cx, cy + 12, r + 4, h);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fill();
-
-    // 2. 플랫폼 본체 (스타디움 배틀그라운드 그라데이션)
-    const platGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, r + h);
-    platGrad.addColorStop(0, '#1e293b');
-    platGrad.addColorStop(0.75, '#0f172a');
-    platGrad.addColorStop(1, '#090d16');
-
-    this.renderStadiumPath(ctx, cx, cy, r, h);
-    ctx.fillStyle = platGrad;
-    ctx.fill();
-
-    // 3. 동심원 전술 라인 및 센터 로고
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
-    ctx.lineWidth = 1.5;
-    this.renderStadiumPath(ctx, cx, cy, r * 0.45, h * 0.45);
-    ctx.stroke();
-    this.renderStadiumPath(ctx, cx, cy, r * 0.8, h * 0.8);
-    ctx.stroke();
-
-    // 중앙 커피 컵 그래픽 (미니멀 네온)
-    ctx.font = '40px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.globalAlpha = 0.12;
-    ctx.fillText('☕', cx, cy);
-    ctx.globalAlpha = 1.0;
-
-    // 4. 낙사 위험 경계선 (Danger Perimeter 펄스 네온)
-    const dangerColor = this.isSuddenDeath ? '#ef4444' : '#f59e0b';
-    this.renderStadiumPath(ctx, cx, cy, r, h);
-    ctx.strokeStyle = dangerColor;
-    ctx.lineWidth = this.isSuddenDeath ? 4.5 : 3;
-    ctx.stroke();
-
-    // 경계선 외곽 글로우
-    this.renderStadiumPath(ctx, cx, cy, r + 3, h + 3);
-    ctx.strokeStyle = this.isSuddenDeath ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.25)';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-  }
-
-  private renderSuddenDeathWarning(ctx: CanvasRenderingContext2D): void {
-    ctx.save();
-    // 상단 사이렌 배너
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
-    ctx.fillRect(0, 180, this.virtualWidth, 70);
-
-    ctx.font = '900 24px system-ui, -apple-system, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⚠️ SUDDEN DEATH: 엄폐물 제거! ⚠️', ARENA_CONFIG.centerX, 203);
-
-    ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
-    ctx.fillStyle = '#fef08a';
-    ctx.fillText('탄약 무제한 난타전 개시!', ARENA_CONFIG.centerX, 230);
-    ctx.restore();
+    return {
+      timeRemaining: this.timeRemaining,
+      totalDuration: this.totalDuration,
+      timeScale: this.timeScale,
+      isSuddenDeath: this.isSuddenDeath,
+      aliveCount,
+      totalCount: allPlayers.length,
+      ammoMode: this.options.ammoMode,
+      myPlayer: myPlayerState
+    };
   }
 
   /**
@@ -790,7 +708,7 @@ export class Game {
       totalDuration: this.totalDuration,
       timeScale: this.timeScale,
       isSuddenDeath: this.isSuddenDeath,
-      arenaRadius: Math.round(ARENA_CONFIG.radius),
+      arenaRadius: Math.round(this.arena.radius),
       players: Array.from(this.players.values()).map(p => p.toSnapshot()),
       bullets: this.bullets.map(b => b.toSnapshot()),
       obstacles: this.obstacles.filter(o => o.active).map(o => o.toSnapshot()),
@@ -807,6 +725,7 @@ export class Game {
     this.timeScale = snap.timeScale;
     this.isSuddenDeath = snap.isSuddenDeath;
     if (snap.arenaRadius) {
+      this.arena.radius = snap.arenaRadius;
       ARENA_CONFIG.radius = snap.arenaRadius;
     }
 

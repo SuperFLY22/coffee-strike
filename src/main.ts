@@ -6,13 +6,11 @@ import { NetworkManager } from './net/Network';
 import {
   GameMode,
   RoomOptions,
+  DEFAULT_ROOM_OPTIONS,
   Team,
-  WeaponType,
   GameResult
 } from './engine/Types';
 import { NetworkPacket, WorldSnapshot } from './net/Protocol';
-import { Player } from './objects/Player';
-import { ARENA_CONFIG } from './engine/Physics';
 
 class CoffeeStrikeApp {
   private container: HTMLElement;
@@ -76,6 +74,7 @@ class CoffeeStrikeApp {
     };
 
     this.game.gameOverCallback = (result: GameResult) => {
+      this.game.stop();
       if (this.isMultiplayer && this.isHost) {
         this.network.broadcast({
           type: 'S2C_GAME_OVER',
@@ -96,7 +95,7 @@ class CoffeeStrikeApp {
   private startHUDUpdateLoop(): void {
     const tick = () => {
       if (this.game.isRunning) {
-        this.hud.update(this.game);
+        this.hud.update(this.game.createHUDState());
       }
       requestAnimationFrame(tick);
     };
@@ -107,11 +106,13 @@ class CoffeeStrikeApp {
    * 로컬 싱글 플레이 (봇 3기)
    */
   private startSinglePlayer(nickname: string): void {
+    this.game.stop();
     this.myNickname = nickname;
     this.isMultiplayer = false;
     this.isHost = true;
 
     this.lobbyUI.hide();
+    this.hud.hideGameOver();
     this.hud.show();
     this.game.initLocalGame(nickname);
 
@@ -170,12 +171,8 @@ class CoffeeStrikeApp {
         { id: this.network.myPeerId, nickname, isHost: false, team }
       ];
       this.currentOptions = {
-        maxPlayers: 10,
-        gameMode: team === 'NONE' ? 'FFA' : 'TEAM',
-        teamCount: 2,
-        duration: 120,
-        timeScale: 1.0,
-        ammoMode: 'UNLIMITED'
+        ...DEFAULT_ROOM_OPTIONS,
+        gameMode: team === 'NONE' ? 'FFA' : 'TEAM'
       };
 
       this.lobbyUI.renderWaitingRoom(roomCode, false, this.lobbyPlayers, this.currentOptions);
@@ -189,6 +186,8 @@ class CoffeeStrikeApp {
    * 호스트: 멀티플레이어 게임 시작
    */
   private startMultiplayerHostGame(): void {
+    this.game.stop();
+    this.hud.hideGameOver();
     this.lobbyUI.hide();
     this.hud.show();
 
@@ -197,33 +196,7 @@ class CoffeeStrikeApp {
     this.game.isHost = true;
     this.game.isMultiplayer = true;
 
-    const weapons: WeaponType[] = ['PISTOL', 'SHOTGUN', 'SNIPER', 'MACHINEGUN'];
-    const totalCount = this.lobbyPlayers.length;
-
-    // 플레이어들을 링 경계로부터 안전한 중심 반경(145px)으로 균등 분산 배치 (즉사 방지)
-    const angleStep = (Math.PI * 2) / Math.max(1, totalCount);
-    const startAngle = Math.PI / 2; // 호스트 플레이어 6시 하단 배치
-
-    this.lobbyPlayers.forEach((lp, idx) => {
-      const angle = startAngle + angleStep * idx;
-      const dist = 145;
-      const x = ARENA_CONFIG.centerX + Math.cos(angle) * dist;
-      const y = ARENA_CONFIG.centerY + Math.sin(angle) * dist;
-      const weapon = weapons[Math.floor(Math.random() * weapons.length)];
-
-      const player = new Player(
-        lp.id,
-        lp.nickname,
-        lp.team,
-        x,
-        y,
-        weapon,
-        lp.isHost,
-        false
-      );
-      player.fireCooldownTimer = 1.0;
-      this.game.players.set(player.id, player);
-    });
+    this.game.spawnPlayers(this.lobbyPlayers);
 
     this.game.spawnObstacles();
 
@@ -263,7 +236,8 @@ class CoffeeStrikeApp {
    * 게스트: 게임 화면 진입 및 30Hz 인풋 송신 루프 시작
    */
   private startGuestGameLoop(initialSnapshot?: WorldSnapshot): void {
-    if (this.game.isRunning) return;
+    this.game.stop();
+    this.hud.hideGameOver();
     this.lobbyUI.hide();
     this.hud.show();
 
@@ -363,7 +337,7 @@ class CoffeeStrikeApp {
       case 'S2C_STATE': {
         if (!this.isHost) {
           // 호스트가 게임을 이미 시작했으나 S2C_GAME_START 패킷이 누락되었을 때 자동 자가 복구 (Fail-safe)
-          if (!this.game.isRunning) {
+          if (!this.game.isRunning || this.game.isGameOver) {
             this.startGuestGameLoop(packet.snapshot);
           }
           this.game.applyWorldSnapshot(packet.snapshot);
@@ -387,10 +361,6 @@ class CoffeeStrikeApp {
       options: this.currentOptions,
       players: this.lobbyPlayers
     });
-  }
-
-  private onPlayerConnected(peerId: string): void {
-    console.log('[Network] Peer connected:', peerId);
   }
 
   private onPlayerDisconnected(peerId: string): void {
