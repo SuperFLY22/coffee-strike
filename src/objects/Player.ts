@@ -103,7 +103,7 @@ export class Player {
     } else if (type === 'HEAL') {
       this.hp = Math.min(this.maxHp, this.hp + 200);
     } else if (type === 'INVINCIBLE') {
-      this.buffs.invincible = 5.0; // 무적 5초
+      this.buffs.invincible = duration;
     }
   }
 
@@ -356,6 +356,38 @@ export class Player {
         this.fallScale = 0;
         this.fallAlpha = 0;
       }
+    }
+  }
+
+  /**
+   * 시작 카운트다운(3초) 동안 발사/링아웃 없이 조이스틱 이동 관성 및 경기장 안전 유지
+   */
+  public updateMovementOnly(
+    dt: number,
+    currentRadius: number = ARENA_CONFIG.radius,
+    currentHalfHeight: number = ARENA_CONFIG.halfHeight
+  ): void {
+    if (this.isDead || this.isFalling) return;
+
+    // 물리 관성 이동
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    // 마찰 감속
+    this.vx *= Math.pow(Physics.FRICTION, dt * 60);
+    this.vy *= Math.pow(Physics.FRICTION, dt * 60);
+    if (Math.abs(this.vx) < 2) this.vx = 0;
+    if (Math.abs(this.vy) < 2) this.vy = 0;
+
+    // 카운트다운 동안에는 경기장 경계 밖으로 나가지 못하게 링 내부로 안전 클램프
+    const distRatio = Physics.getArenaDistanceRatio(this.x, this.y);
+    if (distRatio > 0.88) {
+      const angle = Math.atan2(this.y - ARENA_CONFIG.centerY, this.x - ARENA_CONFIG.centerX);
+      const maxDist = currentRadius * 0.85;
+      this.x = ARENA_CONFIG.centerX + Math.cos(angle) * maxDist;
+      this.y = ARENA_CONFIG.centerY + Math.sin(angle) * (currentHalfHeight * 0.85);
+      this.vx = 0;
+      this.vy = 0;
     }
   }
 

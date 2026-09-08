@@ -277,7 +277,7 @@ export class Game {
   public update(scaledDt: number, realDt: number): void {
     if (this.isGameOver) return;
 
-    // 0. 시작 3, 2, 1 카운트다운 처리
+    // 0. 시작 3, 2, 1 카운트다운 처리 (움직임 허용, 무기 발사 및 대미지 차단, 5초 무적 제거)
     if (this.isCountingDown) {
       this.countdownTimer -= realDt;
       if (this.countdownTimer > 0.6) {
@@ -292,16 +292,53 @@ export class Game {
           this.lastReportedCountdownSec = 0;
           sound.playCountdownBeep(true);
           if (this.onCountdownTick) this.onCountdownTick('GO!');
-          // 전원 2.0초간 시작 무적 쉴드 부여 (즉사 방지)
-          for (const p of this.players.values()) {
-            p.applyBuff('INVINCIBLE', 2.0);
-          }
         }
       } else {
         this.isCountingDown = false;
         if (this.onCountdownFinished) this.onCountdownFinished();
       }
-      return; // 카운트다운 동안에는 경기 타이머/공격 연산 일시정지
+
+      // 3초 카운트다운 동안 조작 입력 및 이동 물리 허용
+      const myPlayer = this.players.get(this.myPlayerId);
+      if (myPlayer && !myPlayer.isDead && !myPlayer.isFalling) {
+        const input = this.joystick.getInput();
+        myPlayer.applyInput(input.dx, input.dy, scaledDt);
+      }
+
+      if (this.isHost) {
+        const allActivePlayers = Array.from(this.players.values());
+        for (const p of allActivePlayers) {
+          if (p.isBot && !p.isDead && !p.isFalling) {
+            const botInput = p.updateBotAI(allActivePlayers, scaledDt);
+            p.applyInput(botInput.dx, botInput.dy, scaledDt);
+          }
+        }
+      }
+
+      const playerList = Array.from(this.players.values());
+      for (const p of playerList) {
+        p.updateMovementOnly(scaledDt, this.arena.radius, this.arena.halfHeight);
+        for (const obs of this.obstacles) {
+          if (obs.active) {
+            Physics.resolveCircleRect(p, obs);
+          }
+        }
+      }
+
+      for (let i = 0; i < playerList.length; i++) {
+        for (let j = i + 1; j < playerList.length; j++) {
+          const p1 = playerList[i];
+          const p2 = playerList[j];
+          if (!p1.isDead && !p1.isFalling && !p2.isDead && !p2.isFalling) {
+            Physics.resolveCircleCircle(
+              { x: p1.x, y: p1.y, vx: p1.vx, vy: p1.vy, radius: p1.radius, mass: p1.currentMass },
+              { x: p2.x, y: p2.y, vx: p2.vx, vy: p2.vy, radius: p2.radius, mass: p2.currentMass }
+            );
+          }
+        }
+      }
+
+      return; // 카운트다운 동안에는 사격/대미지/경기 타이머 일시 정지
     }
 
     // 1. 경기 시간 업데이트

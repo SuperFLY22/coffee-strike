@@ -5,15 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:qr": "npx tsx scripts/dev-qr.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npx tsx tests/engine.test.ts && npx tsx tests/lifecycle.test.ts"
+    "test": "npx tsx tests/engine.test.ts && npx tsx tests/lifecycle.test.ts",
+    "test:balance": "npx tsx scripts/simulate-balance.ts",
+    "test:mobile": "npx playwright test"
   },
   "dependencies": {
     "peerjs": "^1.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "lucide": "^0.475.0",
+    "qrcode-terminal": "^0.12.0",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }

@@ -121,7 +121,6 @@ export class NetworkManager {
 
     conn.on('error', (err) => {
       console.warn('[Guest Connection Error]', conn.peer, err);
-      this.guestConnections.delete(conn.peer);
       if (this.callbacks.onError) this.callbacks.onError(err);
     });
   }
@@ -222,12 +221,26 @@ export class NetworkManager {
   public broadcast(packet: NetworkPacket): void {
     if (!this.isHost) return;
     for (const conn of this.guestConnections.values()) {
-      if (conn.open) {
+      if (conn.open || (conn.dataChannel && conn.dataChannel.readyState === 'open')) {
         try {
           conn.send(packet);
         } catch (e) {
-          console.warn('[Broadcast send failed]', e);
+          console.warn('[Broadcast send failed]', conn.peer, e);
         }
+      }
+    }
+  }
+
+  /**
+   * 호스트: 특정 게스트에게 단일 전송 (재시작 패킷 보장용)
+   */
+  public sendToPeer(peerId: string, packet: NetworkPacket): void {
+    const conn = this.guestConnections.get(peerId);
+    if (conn && (conn.open || (conn.dataChannel && conn.dataChannel.readyState === 'open'))) {
+      try {
+        conn.send(packet);
+      } catch (e) {
+        console.warn('[sendToPeer failed]', peerId, e);
       }
     }
   }
@@ -236,7 +249,7 @@ export class NetworkManager {
    * 게스트: 호스트에게 단일 전송
    */
   public sendToHost(packet: NetworkPacket): void {
-    if (this.hostConnection && this.hostConnection.open) {
+    if (this.hostConnection && (this.hostConnection.open || (this.hostConnection.dataChannel && this.hostConnection.dataChannel.readyState === 'open'))) {
       try {
         this.hostConnection.send(packet);
       } catch (e) {

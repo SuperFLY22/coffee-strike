@@ -22,6 +22,7 @@ class CoffeeStrikeApp {
 
   private isMultiplayer: boolean = false;
   private isHost: boolean = false;
+  private isWaitingRematch: boolean = false;
   private myNickname: string = '플레이어';
   private myTeam: Team = 'NONE';
   private currentOptions!: RoomOptions;
@@ -31,6 +32,7 @@ class CoffeeStrikeApp {
 
   // 호스트 브로드캐스트 / 클라이언트 인풋 전송 인터벌
   private netSyncTimer: number | null = null;
+  private heartbeatTimer: number | null = null;
 
   constructor() {
     this.container = document.getElementById('game-container') as HTMLElement;
@@ -75,6 +77,7 @@ class CoffeeStrikeApp {
 
     this.game.gameOverCallback = (result: GameResult) => {
       this.game.stop();
+      this.isWaitingRematch = true;
       if (this.isMultiplayer && this.isHost) {
         this.network.broadcast({
           type: 'S2C_GAME_OVER',
@@ -90,6 +93,31 @@ class CoffeeStrikeApp {
 
     // HUD 업데이트 루프
     this.startHUDUpdateLoop();
+
+    // 상시 WebRTC P2P NAT 유지 및 재시작 보장용 하트비트 루프 시작
+    this.startHeartbeatLoop();
+  }
+
+  private startHeartbeatLoop(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = window.setInterval(() => {
+      if (!this.isMultiplayer) return;
+
+      if (this.isHost) {
+        this.network.broadcast({
+          type: 'S2C_HEARTBEAT',
+          isGameActive: this.game.isRunning,
+          isCountingDown: this.game.isCountingDown,
+          initialSnapshot: this.game.isRunning ? this.game.createWorldSnapshot() : undefined
+        });
+      } else {
+        this.network.sendToHost({
+          type: 'C2S_HEARTBEAT',
+          id: this.game.myPlayerId,
+          isWaitingRematch: this.isWaitingRematch
+        });
+      }
+    }, 1000);
   }
 
   private startHUDUpdateLoop(): void {
@@ -107,6 +135,7 @@ class CoffeeStrikeApp {
    */
   private startSinglePlayer(nickname: string): void {
     this.game.stop();
+    this.isWaitingRematch = false;
     this.myNickname = nickname;
     this.isMultiplayer = false;
     this.isHost = true;
@@ -185,9 +214,16 @@ class CoffeeStrikeApp {
   /**
    * 호스트: 멀티플레이어 게임 시작
    */
+  /**
+   * 호스트: 멀티플레이어 게임 시작
+   */
   private startMultiplayerHostGame(): void {
     this.game.stop();
+    this.isWaitingRematch = false;
     this.hud.hideGameOver();
+    const modal = document.querySelector('.hud-modal-overlay') as HTMLElement;
+    if (modal) modal.style.display = 'none';
+
     this.lobbyUI.hide();
     this.hud.show();
 
@@ -209,8 +245,10 @@ class CoffeeStrikeApp {
       initialSnapshot
     };
     this.network.broadcast(startPacket);
-    setTimeout(() => this.network.broadcast(startPacket), 100);
+    setTimeout(() => this.network.broadcast(startPacket), 50);
+    setTimeout(() => this.network.broadcast(startPacket), 150);
     setTimeout(() => this.network.broadcast(startPacket), 300);
+    setTimeout(() => this.network.broadcast(startPacket), 600);
 
     this.game.onCountdownTick = (val) => {
       this.hud.showCountdown(val);
@@ -237,7 +275,11 @@ class CoffeeStrikeApp {
    */
   private startGuestGameLoop(initialSnapshot?: WorldSnapshot): void {
     this.game.stop();
+    this.isWaitingRematch = false;
     this.hud.hideGameOver();
+    const modal = document.querySelector('.hud-modal-overlay') as HTMLElement;
+    if (modal) modal.style.display = 'none';
+
     this.lobbyUI.hide();
     this.hud.show();
 
@@ -258,10 +300,10 @@ class CoffeeStrikeApp {
     };
     this.game.startCountdown();
 
-    // 30Hz로 내 조이스틱 입력을 호스트에게 전송
+    // 30Hz로 내 조이스틱 입력을 호스트에게 전송 (3초 카운트다운 동안에도 전송하여 조작 이동 가능)
     if (this.netSyncTimer) clearInterval(this.netSyncTimer);
     this.netSyncTimer = window.setInterval(() => {
-      if (this.game.isRunning && !this.game.isCountingDown) {
+      if (this.game.isRunning) {
         const input = this.game.joystick.getInput();
         this.network.sendToHost({
           type: 'C2S_INPUT',
@@ -312,6 +354,32 @@ class CoffeeStrikeApp {
         break;
       }
 
+      case 'C2S_HEARTBEAT': {
+        if (this.isHost) {
+          // 게스트가 결과 화면에서 재시작을 기다리고 있는데 호스트는 이미 다음 게임을 가동 중인 경우 즉시 단독 동기화
+          if (packet.isWaitingRematch && this.game.isRunning) {
+            this.network.sendToPeer(senderId, {
+              type: 'S2C_GAME_START',
+              options: this.currentOptions,
+              assignedWeapon: 'PISTOL',
+              initialSnapshot: this.game.createWorldSnapshot()
+            });
+          }
+        }
+        break;
+      }
+
+      case 'S2C_HEARTBEAT': {
+        if (!this.isHost) {
+          // 호스트가 게임을 재시작했으나 게스트가 여전히 결과 화면에 머무르고 있는 경우 즉시 화면 전환 자가 복구
+          if (packet.isGameActive && (this.isWaitingRematch || !this.game.isRunning)) {
+            this.isWaitingRematch = false;
+            this.startGuestGameLoop(packet.initialSnapshot);
+          }
+        }
+        break;
+      }
+
       case 'S2C_LOBBY_SYNC': {
         if (!this.isHost) {
           this.currentOptions = packet.options;
@@ -328,6 +396,7 @@ class CoffeeStrikeApp {
 
       case 'S2C_GAME_START': {
         if (!this.isHost) {
+          this.isWaitingRematch = false;
           this.currentOptions = packet.options;
           this.startGuestGameLoop(packet.initialSnapshot);
         }
@@ -336,8 +405,9 @@ class CoffeeStrikeApp {
 
       case 'S2C_STATE': {
         if (!this.isHost) {
-          // 호스트가 게임을 이미 시작했으나 S2C_GAME_START 패킷이 누락되었을 때 자동 자가 복구 (Fail-safe)
-          if (!this.game.isRunning || this.game.isGameOver) {
+          // 호스트가 게임을 이미 시작했으나 S2C_GAME_START 패킷이 누락되었거나 결과 화면에 멈춰있는 경우 자동 자가 복구
+          if (!this.game.isRunning || this.game.isGameOver || this.isWaitingRematch) {
+            this.isWaitingRematch = false;
             this.startGuestGameLoop(packet.snapshot);
           }
           this.game.applyWorldSnapshot(packet.snapshot);
@@ -347,6 +417,7 @@ class CoffeeStrikeApp {
 
       case 'S2C_GAME_OVER': {
         this.game.stop();
+        this.isWaitingRematch = true;
         this.hud.showGameOver(packet.result, false);
         break;
       }
@@ -382,6 +453,7 @@ class CoffeeStrikeApp {
 
   private exitToMainMenu(): void {
     this.game.stop();
+    this.isWaitingRematch = false;
     if (this.netSyncTimer) {
       clearInterval(this.netSyncTimer);
       this.netSyncTimer = null;

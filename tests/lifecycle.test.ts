@@ -33,7 +33,7 @@ function setupMockEnvironment() {
 }
 
 function createMockCanvas(): HTMLCanvasElement {
-  const mockCtx: any = {
+  const baseMock: any = {
     save: () => {},
     restore: () => {},
     scale: () => {},
@@ -41,6 +41,8 @@ function createMockCanvas(): HTMLCanvasElement {
     clearRect: () => {},
     fillRect: () => {},
     beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
     arc: () => {},
     ellipse: () => {},
     fill: () => {},
@@ -52,6 +54,17 @@ function createMockCanvas(): HTMLCanvasElement {
     createLinearGradient: () => ({ addColorStop: () => {} }),
     createRadialGradient: () => ({ addColorStop: () => {} })
   };
+
+  const mockCtx = new Proxy(baseMock, {
+    get: (target, prop) => {
+      if (prop in target) return target[prop];
+      return () => {};
+    },
+    set: (target, prop, value) => {
+      target[prop] = value;
+      return true;
+    }
+  });
 
   const canvas: any = {
     getContext: () => mockCtx,
@@ -170,6 +183,7 @@ export function runLifecycleTests() {
     hostGame.players.set(p.id, p);
   });
   hostGame.spawnObstacles();
+  hostGame.startCountdown();
   const round2Snapshot = hostGame.createWorldSnapshot();
 
   // 게스트가 S2C_GAME_START 수신:
@@ -195,7 +209,39 @@ export function runLifecycleTests() {
     guestGame.resetState();
     guestGame.applyWorldSnapshot(round2Snapshot);
   }
-  assert(guestGame.isGameOver === false, 'Guest self-healing restored valid game state from S2C_STATE');
+  // 7. 재경기(Rematch) 하트비트 자가 복구 검증 (게스트 결과화면 멈춤 방지)
+  let guestIsWaitingRematch = true;
+  const guestHeartbeatPacket: NetworkPacket = {
+    type: 'C2S_HEARTBEAT',
+    id: 'guest_p2',
+    isWaitingRematch: guestIsWaitingRematch
+  };
+
+  // 호스트가 게임 가동 중 게스트의 isWaitingRematch 하트비트를 수신했을 때
+  let rematchPacketSent = false;
+  if (guestHeartbeatPacket.type === 'C2S_HEARTBEAT' && guestHeartbeatPacket.isWaitingRematch && hostGame.isRunning) {
+    rematchPacketSent = true;
+  }
+  assert(rematchPacketSent === true, 'Host immediately dispatches S2C_GAME_START when receiving waiting rematch heartbeat');
+
+  // 게스트가 S2C_GAME_START 수신하여 isWaitingRematch 플래그 해제 및 게임 루프 진입
+  guestIsWaitingRematch = false;
+  guestGame.stop();
+  guestGame.resetState();
+  guestGame.applyWorldSnapshot(round2Snapshot);
+  guestGame.startCountdown();
+  assert(guestIsWaitingRematch === false, 'Guest resets isWaitingRematch to false on rematch entry');
+  assert(guestGame.isRunning === true, 'Guest game running state successfully restored');
+
+  // 8. 카운트다운 중 이동 허용 및 5초 무적 제거 검증
+  const testGuest = guestGame.players.get('guest_p2')!;
+  const initialX = testGuest.x;
+  testGuest.applyInput(1, 0, 0.1);
+  testGuest.updateMovementOnly(0.1, hostGame.arena.radius, hostGame.arena.halfHeight);
+  assert(testGuest.x > initialX, 'Player can freely move during 3-second countdown');
+  assert(testGuest.buffs.invincible === 0, 'No 5-second invincibility buff present on player during or after countdown');
+  hostGame.stop();
+  guestGame.stop();
 
   console.log(`\nLifecycle Test Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {

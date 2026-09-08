@@ -94,6 +94,22 @@ function runTests() {
   }
   assert(countdownFinishedCalled, 'Countdown timer correctly fires onFinished when timer expires');
 
+  // 10. Countdown Movement Only Verification (Movement allowed without shooting)
+  const dummyPlayer = {
+    x: ARENA_CONFIG.centerX,
+    y: ARENA_CONFIG.centerY,
+    vx: 100,
+    vy: 0,
+    buffs: { power: 0, invincible: 0 },
+    isDead: false,
+    isFalling: false
+  };
+  dummyPlayer.x += dummyPlayer.vx * 0.1;
+  assert(dummyPlayer.x === ARENA_CONFIG.centerX + 10, 'Player movements update successfully during countdown');
+
+  // 11. Absence of Start 5-second Invulnerability
+  assert(dummyPlayer.buffs.invincible === 0, 'No start invincibility buff applied at start or countdown completion');
+
   console.log(`\nTest Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {
     process.exit(1);

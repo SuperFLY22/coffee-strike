@@ -4,10 +4,12 @@ export type { WorldSnapshot };
 export type PacketType =
   | 'C2S_JOIN'
   | 'C2S_INPUT'
+  | 'C2S_HEARTBEAT'
   | 'S2C_LOBBY_SYNC'
   | 'S2C_GAME_START'
   | 'S2C_STATE'
-  | 'S2C_GAME_OVER';
+  | 'S2C_GAME_OVER'
+  | 'S2C_HEARTBEAT';
 
 export interface C2S_JoinPacket {
   type: 'C2S_JOIN';
@@ -21,6 +23,12 @@ export interface C2S_InputPacket {
   id: string;
   dx: number;
   dy: number;
+}
+
+export interface C2S_HeartbeatPacket {
+  type: 'C2S_HEARTBEAT';
+  id: string;
+  isWaitingRematch?: boolean;
 }
 
 export interface S2C_LobbySyncPacket {
@@ -52,10 +60,19 @@ export interface S2C_GameOverPacket {
   result: GameResult;
 }
 
+export interface S2C_HeartbeatPacket {
+  type: 'S2C_HEARTBEAT';
+  isGameActive: boolean;
+  isCountingDown: boolean;
+  initialSnapshot?: WorldSnapshot;
+}
+
 export type NetworkPacket =
   | C2S_JoinPacket
   | C2S_InputPacket
+  | C2S_HeartbeatPacket
   | S2C_LobbySyncPacket
   | S2C_GameStartPacket
   | S2C_StatePacket
-  | S2C_GameOverPacket;
+  | S2C_GameOverPacket
+  | S2C_HeartbeatPacket;
