@@ -3,14 +3,16 @@
 export const ARENA_CONFIG = {
   centerX: 360,
   centerY: 640,
-  radius: 310, // 경기장 플랫폼 반지름 (Ring-out 경계)
-  outerRadius: 360, // 시각적 가장자리
-  dangerRadius: 280 // 위험 경고 라인
+  baseRadius: 310,
+  baseHalfHeight: 160, // 세로 스타디움 축 확장 (총 높이 940px, 폭 620px)
+  radius: 310,
+  halfHeight: 160,
+  dangerMargin: 30
 };
 
 export class Physics {
-  // 선형 마찰 계수 (0.95: 부드러운 빙판 미끄러짐 및 시원한 넉백)
-  public static readonly FRICTION = 0.95;
+  // 선형 마찰 계수 (0.94: 부드러운 빙판 미끄러짐 및 시원한 넉백)
+  public static readonly FRICTION = 0.94;
 
   /**
    * 두 점 사이의 거리 계산
@@ -120,8 +122,8 @@ export class Physics {
       const kx = p1.vx - p2.vx;
       const ky = p1.vy - p2.vy;
       const relSpeed = nx * kx + ny * ky;
-      const baseBump = 80; // 부딪히기만 해도 서로 튕겨나가는 기본 임펄스
-      const p = Math.max(baseBump, 2.2 * Math.abs(relSpeed)) / totalMass;
+      const baseBump = 95; // 부딪히기만 해도 서로 튕겨나가는 기본 임펄스 상향
+      const p = Math.max(baseBump, 2.4 * Math.abs(relSpeed)) / totalMass;
 
       p1.vx -= nx * p * p2.mass;
       p1.vy -= ny * p * p2.mass;
@@ -131,34 +133,38 @@ export class Physics {
   }
 
   /**
-   * 넉백 임펄스 적용 공식
-   * v_target = v_target + (F_knockback * itemMultiplier) / mass_target
+   * 넉백 임펄스 적용 공식 (누적 대미지% 반영 스매시 스케일링)
+   * v_target = v_target + (F_knockback * itemMultiplier * (1 + heat% * 1.5)) / mass_target
    */
   public static applyKnockback(
-    target: { vx: number; vy: number; mass: number },
+    target: { vx: number; vy: number; mass: number; heatPercent?: number },
     dirX: number,
     dirY: number,
     impulse: number,
     itemMultiplier: number = 1.0
   ): void {
-    const effectiveImpulse = (impulse * itemMultiplier) / Math.max(0.3, target.mass);
+    const heat = target.heatPercent || 0;
+    const heatMultiplier = 1.0 + (heat / 100) * 1.6; // 100%일 때 2.6배, 200%일 때 4.2배 날아감!
+    const effectiveImpulse = (impulse * itemMultiplier * heatMultiplier) / Math.max(0.3, target.mass);
     target.vx += dirX * effectiveImpulse;
     target.vy += dirY * effectiveImpulse;
   }
 
   /**
-   * 경기장 플랫폼 밖으로 벗어났는지 확인 (Ring-out 검사)
+   * 경기장 플랫폼 밖으로 벗어났는지 확인 (스타디움 캡슐 Ring-out 검사)
    */
-  public static isOutOfArena(x: number, y: number, margin: number = 0): boolean {
-    const dist = Math.hypot(x - ARENA_CONFIG.centerX, y - ARENA_CONFIG.centerY);
-    return dist > (ARENA_CONFIG.radius + margin);
+  public static isOutOfArena(x: number, y: number, currentRadius: number = ARENA_CONFIG.radius, currentHalfHeight: number = ARENA_CONFIG.halfHeight, margin: number = 0): boolean {
+    const clampedY = Math.max(ARENA_CONFIG.centerY - currentHalfHeight, Math.min(ARENA_CONFIG.centerY + currentHalfHeight, y));
+    const dist = Math.hypot(x - ARENA_CONFIG.centerX, y - clampedY);
+    return dist > (currentRadius + margin);
   }
 
   /**
-   * 링아웃까지 남은 거리 비율 (0: 중심, 1: 경계선)
+   * 링아웃까지 남은 거리 비율 (0: 중심 축, 1: 경계선)
    */
-  public static getArenaDistanceRatio(x: number, y: number): number {
-    const dist = Math.hypot(x - ARENA_CONFIG.centerX, y - ARENA_CONFIG.centerY);
-    return Math.min(1.0, dist / ARENA_CONFIG.radius);
+  public static getArenaDistanceRatio(x: number, y: number, currentRadius: number = ARENA_CONFIG.radius, currentHalfHeight: number = ARENA_CONFIG.halfHeight): number {
+    const clampedY = Math.max(ARENA_CONFIG.centerY - currentHalfHeight, Math.min(ARENA_CONFIG.centerY + currentHalfHeight, y));
+    const dist = Math.hypot(x - ARENA_CONFIG.centerX, y - clampedY);
+    return Math.min(1.0, dist / Math.max(1, currentRadius));
   }
 }

@@ -27,6 +27,9 @@ export class HUD {
     this.topBarEl = document.createElement('div');
     this.topBarEl.className = 'hud-top-bar';
     this.topBarEl.innerHTML = `
+      <div class="hud-left-actions">
+        <button id="btn-hud-exit" class="btn-hud-exit" title="게임 종료 및 로비로 나가기">🚪 나가기</button>
+      </div>
       <div class="hud-item hud-timer-box">
         <span class="hud-label">남은 시간</span>
         <span class="hud-val timer-val" id="hud-timer">02:00</span>
@@ -45,17 +48,30 @@ export class HUD {
     `;
     this.container.appendChild(this.topBarEl);
 
-    // Bottom Weapon & Ammo Bar
+    // Bottom Weapon & HP Bar
     const bottomBar = document.createElement('div');
     bottomBar.className = 'hud-bottom-bar';
     bottomBar.innerHTML = `
-      <div class="hud-weapon-card" id="hud-weapon-card">
-        <div class="weapon-info">
-          <span class="weapon-name" id="hud-weapon-name">밸런스 피스톨</span>
-          <span class="ammo-count" id="hud-ammo-count">∞</span>
+      <div class="hud-status-cards">
+        <div class="hud-hp-card">
+          <div class="hp-info">
+            <span class="hp-label">❤️ 체력</span>
+            <span class="hp-count" id="hud-hp-val">100 HP</span>
+            <span class="heat-count" id="hud-heat-val">💥 0%</span>
+          </div>
+          <div class="hp-track">
+            <div class="hp-fill" id="hud-hp-fill" style="width: 100%;"></div>
+          </div>
         </div>
-        <div class="ammo-track">
-          <div class="ammo-fill" id="hud-ammo-fill" style="width: 100%;"></div>
+
+        <div class="hud-weapon-card" id="hud-weapon-card">
+          <div class="weapon-info">
+            <span class="weapon-name" id="hud-weapon-name">밸런스 피스톨</span>
+            <span class="ammo-count" id="hud-ammo-count">∞</span>
+          </div>
+          <div class="ammo-track">
+            <div class="ammo-fill" id="hud-ammo-fill" style="width: 100%;"></div>
+          </div>
         </div>
       </div>
     `;
@@ -85,6 +101,19 @@ export class HUD {
     this.timeScaleBadgeEl = this.topBarEl.querySelector('#hud-scale') as HTMLElement;
     this.weaponBadgeEl = bottomBar.querySelector('#hud-weapon-name') as HTMLElement;
     this.ammoBarEl = bottomBar.querySelector('#hud-ammo-fill') as HTMLElement;
+
+    // 나가기 버튼 바인딩
+    const exitBtn = this.topBarEl.querySelector('#btn-hud-exit') as HTMLButtonElement;
+    if (exitBtn) {
+      exitBtn.style.pointerEvents = 'auto';
+      exitBtn.addEventListener('click', () => {
+        if (confirm('정말로 게임을 종료하고 로비로 나가시겠습니까?')) {
+          if (this.onExitLobbyClick) {
+            this.onExitLobbyClick();
+          }
+        }
+      });
+    }
 
     const soundBtn = this.topBarEl.querySelector('#btn-sound-toggle') as HTMLButtonElement;
     if (soundBtn) {
@@ -124,9 +153,31 @@ export class HUD {
       sdTag.style.display = 'none';
     }
 
-    // 5. 내 무기 및 잔탄 표시
+    // 5. 내 HP 및 무기 & 잔탄 표시
     const myPlayer = game.players.get(game.myPlayerId);
     if (myPlayer) {
+      const hpValEl = this.container.querySelector('#hud-hp-val') as HTMLElement;
+      const hpFillEl = this.container.querySelector('#hud-hp-fill') as HTMLElement;
+      const heatValEl = this.container.querySelector('#hud-heat-val') as HTMLElement;
+
+      if (hpValEl && hpFillEl) {
+        if (myPlayer.buffs.invincible > 0) {
+          hpValEl.textContent = `무적 (${myPlayer.buffs.invincible.toFixed(1)}s)`;
+          hpFillEl.style.width = '100%';
+          hpFillEl.style.backgroundColor = '#f59e0b';
+        } else {
+          hpValEl.textContent = `${Math.round(myPlayer.hp)} HP`;
+          const hpPct = Math.max(0, Math.min(100, (myPlayer.hp / 100) * 100));
+          hpFillEl.style.width = `${hpPct}%`;
+          hpFillEl.style.backgroundColor = hpPct > 50 ? '#10b981' : (hpPct > 25 ? '#f59e0b' : '#ef4444');
+        }
+      }
+
+      if (heatValEl) {
+        heatValEl.textContent = `💥 ${Math.round(myPlayer.heatPercent)}%`;
+        heatValEl.style.color = myPlayer.heatPercent >= 100 ? '#ef4444' : '#f59e0b';
+      }
+
       const stats = WEAPON_CONFIGS[myPlayer.weapon];
       this.weaponBadgeEl.textContent = stats.nameKo;
       const ammoCountEl = this.container.querySelector('#hud-ammo-count') as HTMLElement;

@@ -130,18 +130,26 @@ export class Game {
   }
 
   /**
-   * 맵 엄폐물 생성 (직사각형 바위 4개)
+   * 맵 엄폐물 생성 (스타디움 최적화 바위 6개 분산 배치)
    */
   public spawnObstacles(): void {
     this.obstacles = [];
-    const offset = 120;
+    const cx = ARENA_CONFIG.centerX;
+    const cy = ARENA_CONFIG.centerY;
     const w = 55;
     const h = 55;
 
-    this.obstacles.push(new Obstacle('obs_1', ARENA_CONFIG.centerX - offset - w / 2, ARENA_CONFIG.centerY - offset - h / 2, w, h));
-    this.obstacles.push(new Obstacle('obs_2', ARENA_CONFIG.centerX + offset - w / 2, ARENA_CONFIG.centerY - offset - h / 2, w, h));
-    this.obstacles.push(new Obstacle('obs_3', ARENA_CONFIG.centerX - offset - w / 2, ARENA_CONFIG.centerY + offset - h / 2, w, h));
-    this.obstacles.push(new Obstacle('obs_4', ARENA_CONFIG.centerX + offset - w / 2, ARENA_CONFIG.centerY + offset - h / 2, w, h));
+    // 상단 구역 2개
+    this.obstacles.push(new Obstacle('obs_1', cx - 130 - w / 2, cy - 210 - h / 2, w, h));
+    this.obstacles.push(new Obstacle('obs_2', cx + 130 - w / 2, cy - 210 - h / 2, w, h));
+
+    // 중앙 좌우 2개
+    this.obstacles.push(new Obstacle('obs_3', cx - 160 - w / 2, cy - h / 2, w, h));
+    this.obstacles.push(new Obstacle('obs_4', cx + 160 - w / 2, cy - h / 2, w, h));
+
+    // 하단 구역 2개
+    this.obstacles.push(new Obstacle('obs_5', cx - 130 - w / 2, cy + 210 - h / 2, w, h));
+    this.obstacles.push(new Obstacle('obs_6', cx + 130 - w / 2, cy + 210 - h / 2, w, h));
   }
 
   public resetState(): void {
@@ -205,7 +213,18 @@ export class Game {
       return;
     }
 
-    // 2. 10초 전 서든데스 확인
+    // 2. 동적 경기장 수축 (Shrinking Ring)
+    // 경기 시간 절반(60초) 경과 후부터 플랫폼이 서서히 수축: radius 310 -> 210, halfHeight 160 -> 60
+    if (this.timeRemaining < 60) {
+      const shrinkRatio = Math.max(0, this.timeRemaining / 60); // 1.0 -> 0.0
+      ARENA_CONFIG.radius = 210 + (ARENA_CONFIG.baseRadius - 210) * shrinkRatio;
+      ARENA_CONFIG.halfHeight = 60 + (ARENA_CONFIG.baseHalfHeight - 60) * shrinkRatio;
+    } else {
+      ARENA_CONFIG.radius = ARENA_CONFIG.baseRadius;
+      ARENA_CONFIG.halfHeight = ARENA_CONFIG.baseHalfHeight;
+    }
+
+    // 3. 10초 전 서든데스 확인 (초고속 수축 & 엄폐물 소멸)
     if (this.timeRemaining <= 10 && !this.isSuddenDeath) {
       this.triggerSuddenDeath();
     }
@@ -213,25 +232,25 @@ export class Game {
       this.suddenDeathWarningTimer = Math.max(0, this.suddenDeathWarningTimer - realDt);
     }
 
-    // 3. 아이템 주기적 스폰 (15초 주기, 최대 2개 유지)
+    // 4. 아이템 주기적 스폰 (12초 주기, 최대 2개 유지)
     if (this.isHost) {
       this.itemSpawnTimer -= scaledDt;
       if (this.itemSpawnTimer <= 0) {
-        this.itemSpawnTimer = 15.0;
+        this.itemSpawnTimer = 12.0;
         if (this.items.filter(it => it.active).length < 2) {
           this.spawnRandomItem();
         }
       }
     }
 
-    // 4. 로컬 플레이어 조작 입력 적용
+    // 5. 로컬 플레이어 조작 입력 적용
     const myPlayer = this.players.get(this.myPlayerId);
     if (myPlayer && !myPlayer.isDead && !myPlayer.isFalling) {
       const input = this.joystick.getInput();
       myPlayer.applyInput(input.dx, input.dy, scaledDt);
     }
 
-    // 5. 봇 AI 업데이트 (호스트 전담)
+    // 6. 봇 AI 업데이트 (호스트 전담)
     if (this.isHost) {
       const allActivePlayers = Array.from(this.players.values());
       for (const p of allActivePlayers) {
@@ -242,11 +261,11 @@ export class Game {
       }
     }
 
-    // 6. 플레이어 물리, 버프, 낙사 업데이트 & 자동 격발
+    // 7. 플레이어 물리, 버프, 낙사 업데이트 & 자동 격발
     const playerList = Array.from(this.players.values());
     for (const p of playerList) {
       // 링아웃 콜백
-      p.update(scaledDt, (eliminatedPlayer) => {
+      p.update(scaledDt, ARENA_CONFIG.radius, ARENA_CONFIG.halfHeight, (eliminatedPlayer) => {
         if (!eliminatedPlayer.ringOutRank) {
           eliminatedPlayer.ringOutRank = this.currentEliminationRank++;
           sound.playRingOut();
@@ -266,7 +285,7 @@ export class Game {
           if (item.active && Physics.checkCircleCircle(p.x, p.y, p.radius, item.x, item.y, item.radius)) {
             item.active = false;
             p.applyBuff(item.type);
-            this.addShockwave(item.x, item.y, 40, '#f8fafc');
+            this.addShockwave(item.x, item.y, 45, item.type === 'INVINCIBLE' ? '#f59e0b' : (item.type === 'HEAL' ? '#10b981' : '#ef4444'));
             sound.playItemPickup();
           }
         }
@@ -303,7 +322,7 @@ export class Game {
       }
     }
 
-    // 7. 총알 업데이트 및 충돌 판정
+    // 8. 총알 업데이트 및 충돌 판정
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
       b.update(scaledDt);
@@ -336,28 +355,33 @@ export class Game {
           if (this.options.gameMode === 'TEAM' && b.shooterTeam !== 'NONE' && target.team === b.shooterTeam) continue; // 아군 무시
 
           if (Physics.checkCircleCircle(b.x, b.y, b.radius, target.x, target.y, target.radius)) {
-            // 피격 성공! 넉백 부여 및 이동 제어력 일시 감쇄
+            // 피격 각도
             const hitAngle = Math.atan2(b.vy, b.vx);
             const dirX = Math.cos(hitAngle);
             const dirY = Math.sin(hitAngle);
 
-            Physics.applyKnockback(
-              { vx: target.vx, vy: target.vy, mass: target.currentMass },
-              dirX,
-              dirY,
-              b.impulse,
-              b.knockbackMultiplier
-            );
+            const hitSuccess = target.takeHit(b, dirX, dirY);
 
-            target.knockbackStunTimer = 0.25; // 0.25초간 조이스틱 저항 감쇄로 쭉 밀림
-            if (target.id === this.myPlayerId) {
-              this.screenShake = 14;
+            if (hitSuccess) {
+              if (target.id === this.myPlayerId) {
+                this.screenShake = 16;
+              } else {
+                this.screenShake = Math.max(this.screenShake, 7);
+              }
+
+              this.addShockwave(b.x, b.y, 28, b.color);
+              sound.playHit();
+
+              // HP 0 도달로 사망 시 링아웃 순위 부여
+              if (target.isDead && !target.ringOutRank) {
+                target.ringOutRank = this.currentEliminationRank++;
+                sound.playRingOut();
+              }
             } else {
-              this.screenShake = Math.max(this.screenShake, 6);
+              // 무적 상태로 총알 튕김
+              this.addShockwave(b.x, b.y, 32, '#f59e0b');
             }
 
-            this.addShockwave(b.x, b.y, 28, b.color);
-            sound.playHit();
             b.alive = false;
             this.bullets.splice(i, 1);
             break;
@@ -366,7 +390,7 @@ export class Game {
       }
     }
 
-    // 8. 엄폐물 및 아이템 업데이트
+    // 9. 엄폐물 및 아이템 업데이트
     for (const obs of this.obstacles) {
       obs.update(scaledDt);
     }
@@ -378,7 +402,7 @@ export class Game {
       }
     }
 
-    // 9. 충격파 이펙트 업데이트
+    // 10. 충격파 이펙트 업데이트
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {
       const sw = this.shockwaves[i];
       sw.radius += realDt * 80;
@@ -388,7 +412,7 @@ export class Game {
       }
     }
 
-    // 10. 승리/생존자 확인
+    // 11. 승리/생존자 확인
     if (this.isHost) {
       this.checkWinningCondition();
     }
@@ -405,15 +429,37 @@ export class Game {
   }
 
   private spawnRandomItem(): void {
-    const types: ItemType[] = ['POWER', 'SPEED', 'SHIELD'];
+    const types: ItemType[] = ['POWER', 'HEAL', 'INVINCIBLE'];
     const selectedType = types[Math.floor(Math.random() * types.length)];
-    // 아레나 내부 랜덤 위치 (반지름의 60% 안쪽)
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.random() * (ARENA_CONFIG.radius * 0.6);
-    const x = ARENA_CONFIG.centerX + Math.cos(angle) * dist;
-    const y = ARENA_CONFIG.centerY + Math.sin(angle) * dist;
 
-    const item = new Item(`item_${Date.now()}`, selectedType, x, y);
+    let spawnX = ARENA_CONFIG.centerX;
+    let spawnY = ARENA_CONFIG.centerY;
+
+    // 최대 25회 시도하여 장애물과 겹치지 않는 안전한 바닥 탐색
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * (ARENA_CONFIG.radius * 0.7);
+      const halfH = (Math.random() - 0.5) * (ARENA_CONFIG.halfHeight * 1.5);
+      const x = ARENA_CONFIG.centerX + Math.cos(angle) * dist;
+      const y = ARENA_CONFIG.centerY + halfH + Math.sin(angle) * (dist * 0.4);
+
+      // 장애물과 충돌 검사 (안전 마진 40px)
+      let hitObstacle = false;
+      for (const obs of this.obstacles) {
+        if (obs.active && Physics.checkCircleRect(x, y, 40, obs.x, obs.y, obs.width, obs.height).collided) {
+          hitObstacle = true;
+          break;
+        }
+      }
+
+      if (!hitObstacle && !Physics.isOutOfArena(x, y, ARENA_CONFIG.radius - 20, ARENA_CONFIG.halfHeight - 10)) {
+        spawnX = x;
+        spawnY = y;
+        break;
+      }
+    }
+
+    const item = new Item(`item_${Date.now()}`, selectedType, spawnX, spawnY);
     this.items.push(item);
   }
 
@@ -598,40 +644,46 @@ export class Game {
     }
   }
 
+  private renderStadiumPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, h: number): void {
+    ctx.beginPath();
+    ctx.arc(cx, cy - h, r, Math.PI, 0, false);
+    ctx.lineTo(cx + r, cy + h);
+    ctx.arc(cx, cy + h, r, 0, Math.PI, false);
+    ctx.lineTo(cx - r, cy - h);
+    ctx.closePath();
+  }
+
   private renderArena(ctx: CanvasRenderingContext2D): void {
     const cx = ARENA_CONFIG.centerX;
     const cy = ARENA_CONFIG.centerY;
     const r = ARENA_CONFIG.radius;
+    const h = ARENA_CONFIG.halfHeight;
 
-    // 1. 경기장 바닥 그림자
-    ctx.beginPath();
-    ctx.arc(cx, cy + 12, r + 4, 0, Math.PI * 2);
+    // 1. 경기장 바닥 그림자 (스타디움)
+    this.renderStadiumPath(ctx, cx, cy + 12, r + 4, h);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fill();
 
-    // 2. 플랫폼 본체 (원형 배틀그라운드)
-    const platGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, r);
+    // 2. 플랫폼 본체 (스타디움 배틀그라운드 그라데이션)
+    const platGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, r + h);
     platGrad.addColorStop(0, '#1e293b');
-    platGrad.addColorStop(0.85, '#0f172a');
+    platGrad.addColorStop(0.75, '#0f172a');
     platGrad.addColorStop(1, '#090d16');
 
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    this.renderStadiumPath(ctx, cx, cy, r, h);
     ctx.fillStyle = platGrad;
     ctx.fill();
 
-    // 3. 동심원 전술 링 및 센터 로고
+    // 3. 동심원 전술 라인 및 센터 로고
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
     ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2);
+    this.renderStadiumPath(ctx, cx, cy, r * 0.45, h * 0.45);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2);
+    this.renderStadiumPath(ctx, cx, cy, r * 0.8, h * 0.8);
     ctx.stroke();
 
     // 중앙 커피 컵 그래픽 (미니멀 네온)
-    ctx.font = '36px sans-serif';
+    ctx.font = '40px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.globalAlpha = 0.12;
@@ -640,16 +692,14 @@ export class Game {
 
     // 4. 낙사 위험 경계선 (Danger Perimeter 펄스 네온)
     const dangerColor = this.isSuddenDeath ? '#ef4444' : '#f59e0b';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    this.renderStadiumPath(ctx, cx, cy, r, h);
     ctx.strokeStyle = dangerColor;
-    ctx.lineWidth = this.isSuddenDeath ? 4 : 3;
+    ctx.lineWidth = this.isSuddenDeath ? 4.5 : 3;
     ctx.stroke();
 
     // 경계선 외곽 글로우
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
-    ctx.strokeStyle = this.isSuddenDeath ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.25)';
+    this.renderStadiumPath(ctx, cx, cy, r + 3, h + 3);
+    ctx.strokeStyle = this.isSuddenDeath ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.25)';
     ctx.lineWidth = 6;
     ctx.stroke();
   }
@@ -681,6 +731,7 @@ export class Game {
       totalDuration: this.totalDuration,
       timeScale: this.timeScale,
       isSuddenDeath: this.isSuddenDeath,
+      arenaRadius: Math.round(ARENA_CONFIG.radius),
       players: Array.from(this.players.values()).map(p => p.toSnapshot()),
       bullets: this.bullets.map(b => b.toSnapshot()),
       obstacles: this.obstacles.filter(o => o.active).map(o => o.toSnapshot()),
@@ -689,13 +740,16 @@ export class Game {
   }
 
   /**
-   * 게스트 클라이언트 측 스냅샷 보간/적용
+   * 게스트 클라이언트 측 스냅샷 보간/적용 (장애물 및 아이템 동기화 완비)
    */
   public applyWorldSnapshot(snap: WorldSnapshot): void {
     this.timeRemaining = snap.timeRemaining;
     this.totalDuration = snap.totalDuration;
     this.timeScale = snap.timeScale;
     this.isSuddenDeath = snap.isSuddenDeath;
+    if (snap.arenaRadius) {
+      ARENA_CONFIG.radius = snap.arenaRadius;
+    }
 
     // 플레이어 동기화
     for (const pSnap of snap.players) {
@@ -713,6 +767,10 @@ export class Game {
         );
         this.players.set(p.id, p);
       }
+
+      p.hp = pSnap.hp ?? 100;
+      p.maxHp = pSnap.maxHp ?? 300;
+      p.heatPercent = pSnap.heatPercent ?? 0;
 
       // 내 플레이어 위치는 스무스 보간
       if (p.id === this.myPlayerId) {
@@ -763,9 +821,23 @@ export class Game {
       return b;
     });
 
-    // 엄폐물 동기화
+    // 엄폐물 동기화 (모바일 게스트 미표시 버그 수정)
     if (this.isSuddenDeath) {
       this.obstacles = [];
+    } else if (snap.obstacles && snap.obstacles.length > 0) {
+      this.obstacles = snap.obstacles.map(oSnap => {
+        return new Obstacle(oSnap.id, oSnap.x, oSnap.y, oSnap.width, oSnap.height);
+      });
+    }
+
+    // 아이템 동기화
+    if (snap.items) {
+      this.items = snap.items.map(iSnap => {
+        const item = new Item(iSnap.id, iSnap.type, iSnap.x, iSnap.y);
+        item.radius = iSnap.radius;
+        item.lifetime = iSnap.lifetime;
+        return item;
+      });
     }
   }
 }

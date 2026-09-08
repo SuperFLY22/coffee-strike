@@ -12,6 +12,7 @@ export class Bullet {
   public radius: number;
   public color: string;
   public impulse: number;
+  public damage: number;
   public knockbackMultiplier: number;
   public distanceTraveled: number = 0;
   public maxRange: number;
@@ -39,6 +40,7 @@ export class Bullet {
     this.radius = config.bulletRadius;
     this.color = config.color;
     this.impulse = config.impulse;
+    this.damage = config.damage * knockbackMultiplier;
     this.maxRange = config.range;
 
     this.x = startX;

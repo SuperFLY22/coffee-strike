@@ -362,6 +362,36 @@ canvas#game-canvas {
   z-index: 50;
 }
 
+.hud-left-actions {
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.btn-hud-exit {
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-hud-exit:hover {
+  background: rgba(239, 68, 68, 0.4);
+  color: #ffffff;
+}
+
+.btn-hud-exit:active {
+  transform: scale(0.92);
+}
+
 .hud-right-box {
   display: flex;
   align-items: center;
@@ -451,11 +481,66 @@ canvas#game-canvas {
   z-index: 50;
 }
 
-.hud-weapon-card {
-  background: rgba(15, 23, 42, 0.8);
+.hud-status-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.hud-hp-card {
+  background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 8px 12px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  min-width: 140px;
+}
+
+.hp-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  gap: 6px;
+}
+
+.hp-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #34d399;
+}
+
+.hp-count {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.heat-count {
+  font-size: 11px;
+  font-weight: 900;
+  color: #f59e0b;
+}
+
+.hp-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  transition: width 0.15s ease, background-color 0.2s ease;
+}
+
+.hud-weapon-card {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 12px;
   border-radius: 12px;
   min-width: 140px;
 }
@@ -464,7 +549,7 @@ canvas#game-canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .weapon-name {

@@ -246,6 +246,7 @@ class CoffeeStrikeApp {
 
     this.game.resetState();
     this.game.setOptions(this.currentOptions);
+    this.game.spawnObstacles();
     this.game.isHost = false;
     this.game.isMultiplayer = true;
     this.game.start();

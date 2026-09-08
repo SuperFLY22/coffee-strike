@@ -25,19 +25,21 @@ export class Player {
   public baseSpeed: number = 220;
   public baseMass: number = 1.0;
 
-  // 전투 속성
+  // 전투 & 체력 속성
   public weapon: WeaponType;
   public ammo: number;
   public maxAmmo: number;
   public isReloading: boolean = false;
   public reloadTimer: number = 0;
   public fireCooldownTimer: number = 0;
+  public hp: number = 100;
+  public maxHp: number = 300;
+  public heatPercent: number = 0; // 누적 피격량 % (맞을수록 넉백 증가)
 
   // 버프 (남은 시간 초)
   public buffs = {
     power: 0,
-    speed: 0,
-    shield: 0
+    invincible: 0
   };
 
   // 생존 및 낙사 상태
@@ -77,21 +79,52 @@ export class Player {
   }
 
   public get currentSpeed(): number {
-    return this.buffs.speed > 0 ? this.baseSpeed * 1.5 : this.baseSpeed;
+    return this.baseSpeed;
   }
 
   public get currentMass(): number {
-    return this.buffs.shield > 0 ? this.baseMass * 3.0 : this.baseMass;
+    return this.baseMass;
+  }
+
+  public get mass(): number {
+    return this.baseMass;
+  }
+  public set mass(v: number) {
+    this.baseMass = v;
   }
 
   public get knockbackBonus(): number {
     return this.buffs.power > 0 ? 2.0 : 1.0;
   }
 
-  public applyBuff(type: 'POWER' | 'SPEED' | 'SHIELD', duration: number = 7.0): void {
-    if (type === 'POWER') this.buffs.power = duration;
-    if (type === 'SPEED') this.buffs.speed = duration;
-    if (type === 'SHIELD') this.buffs.shield = duration;
+  public applyBuff(type: 'POWER' | 'HEAL' | 'INVINCIBLE', duration: number = 7.0): void {
+    if (type === 'POWER') {
+      this.buffs.power = duration;
+    } else if (type === 'HEAL') {
+      this.hp = Math.min(this.maxHp, this.hp + 200);
+    } else if (type === 'INVINCIBLE') {
+      this.buffs.invincible = 5.0; // 무적 5초
+    }
+  }
+
+  public takeHit(bullet: Bullet, dirX: number, dirY: number): boolean {
+    if (this.isDead || this.isFalling) return false;
+    // 무적 5초 상태에서는 피격 및 넉백 100% 면역
+    if (this.buffs.invincible > 0) return false;
+
+    // HP 감쇄
+    this.hp = Math.max(0, this.hp - bullet.damage);
+    // 누적 대미지% 증가 (맞을수록 넉백 기하급수 증가)
+    this.heatPercent = Math.min(350, this.heatPercent + bullet.damage * 1.5);
+
+    // 넉백 임펄스 적용
+    Physics.applyKnockback(this, dirX, dirY, bullet.impulse, bullet.knockbackMultiplier);
+    this.knockbackStunTimer = 0.40; // 0.4초간 조작 저항력 대폭 감쇄
+
+    if (this.hp <= 0) {
+      this.isDead = true;
+    }
+    return true;
   }
 
   public setWeapon(weapon: WeaponType): void {
@@ -110,8 +143,8 @@ export class Player {
     if (this.isFalling || this.isDead) return;
 
     if (dx !== 0 || dy !== 0) {
-      // 피격 직후에는 저항력을 30%로 감쇄하여 넉백으로 쭉 밀려나는 쾌감 극대화
-      const controlFactor = this.knockbackStunTimer > 0 ? 0.3 : 1.0;
+      // 피격 직후에는 저항력을 25%로 감쇄하여 넉백으로 쭉 밀려나는 쾌감 극대화
+      const controlFactor = this.knockbackStunTimer > 0 ? 0.25 : 1.0;
       this.x += dx * this.currentSpeed * controlFactor * dt;
       this.y += dy * this.currentSpeed * controlFactor * dt;
     }
@@ -266,7 +299,12 @@ export class Player {
   /**
    * 물리 및 상태 업데이트
    */
-  public update(dt: number, onRingOut?: (p: Player) => void): void {
+  public update(
+    dt: number,
+    currentRadius: number = ARENA_CONFIG.radius,
+    currentHalfHeight: number = ARENA_CONFIG.halfHeight,
+    onRingOut?: (p: Player) => void
+  ): void {
     if (this.isDead) return;
 
     if (!this.isFalling) {
@@ -286,8 +324,7 @@ export class Player {
 
       // 버프 시간 차감
       if (this.buffs.power > 0) this.buffs.power = Math.max(0, this.buffs.power - dt);
-      if (this.buffs.speed > 0) this.buffs.speed = Math.max(0, this.buffs.speed - dt);
-      if (this.buffs.shield > 0) this.buffs.shield = Math.max(0, this.buffs.shield - dt);
+      if (this.buffs.invincible > 0) this.buffs.invincible = Math.max(0, this.buffs.invincible - dt);
       if (this.knockbackStunTimer > 0) this.knockbackStunTimer = Math.max(0, this.knockbackStunTimer - dt);
 
       // 물리 관성 이동 (넉백 속도 적용)
@@ -301,7 +338,7 @@ export class Player {
       if (Math.abs(this.vy) < 2) this.vy = 0;
 
       // 경기장 링아웃 낙사 체크
-      if (Physics.isOutOfArena(this.x, this.y, this.radius * 0.5)) {
+      if (Physics.isOutOfArena(this.x, this.y, currentRadius, currentHalfHeight, this.radius * 0.5)) {
         this.isFalling = true;
         if (onRingOut) {
           onRingOut(this);
@@ -333,24 +370,24 @@ export class Player {
     const baseColor = this.team !== 'NONE' ? TEAM_COLORS[this.team] : (isMe ? '#38bdf8' : (this.isBot ? '#94a3b8' : '#a855f7'));
 
     // 1. 버프 오라 렌더링
-    if (this.buffs.power > 0) {
+    if (this.buffs.invincible > 0) {
+      // 황금 무적 쉴드 펄스
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 8, 0, Math.PI * 2);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 12, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (this.buffs.power > 0) {
+      // 붉은 파워 오라
       ctx.beginPath();
       ctx.arc(0, 0, this.radius + 7, 0, Math.PI * 2);
       ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
-    if (this.buffs.speed > 0) {
-      ctx.beginPath();
-      ctx.arc(0, 0, this.radius + 5, 0, Math.PI * 2);
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    if (this.buffs.shield > 0) {
-      ctx.beginPath();
-      ctx.arc(0, 0, this.radius + 9, 0, Math.PI * 2);
-      ctx.strokeStyle = '#eab308';
       ctx.lineWidth = 3;
       ctx.stroke();
     }
@@ -385,9 +422,9 @@ export class Player {
     // 내 캐릭터인 경우 상단 역삼각형 인디케이터
     if (isMe) {
       ctx.beginPath();
-      ctx.moveTo(0, -this.radius - 12);
-      ctx.lineTo(-6, -this.radius - 20);
-      ctx.lineTo(6, -this.radius - 20);
+      ctx.moveTo(0, -this.radius - 16);
+      ctx.lineTo(-6, -this.radius - 24);
+      ctx.lineTo(6, -this.radius - 24);
       ctx.closePath();
       ctx.fillStyle = '#38bdf8';
       ctx.fill();
@@ -399,16 +436,38 @@ export class Player {
     ctx.fillStyle = '#f8fafc';
     ctx.fillText(this.nickname, 0, -this.radius - 6);
 
+    // 6. 미니 HP 바 & 누적 Heat%
+    const barWidth = 34;
+    const barHeight = 4;
+    const barX = -barWidth / 2;
+    const barY = this.radius + 6;
+
+    // HP 바 배경
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2);
+
+    // HP 채우기
+    const hpRatio = Math.max(0, Math.min(1.0, this.hp / 100));
+    ctx.fillStyle = hpRatio > 0.5 ? '#10b981' : (hpRatio > 0.25 ? '#f59e0b' : '#ef4444');
+    ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+
+    // 누적 Heat% 텍스트 (넉백 배율 표시)
+    if (this.heatPercent > 0) {
+      ctx.font = 'bold 9px system-ui';
+      ctx.fillStyle = this.heatPercent >= 100 ? '#ef4444' : '#f59e0b';
+      ctx.fillText(`${Math.round(this.heatPercent)}%`, 0, barY + barHeight + 9);
+    }
+
     // 재장전 중 표시
     if (this.isReloading) {
-      ctx.font = 'bold 10px system-ui';
+      ctx.font = 'bold 9px system-ui';
       ctx.fillStyle = '#f59e0b';
-      ctx.fillText('RELOAD...', 0, this.radius + 14);
+      ctx.fillText('RELOAD...', 0, barY + barHeight + 20);
     }
 
     ctx.restore();
 
-    // 6. 타겟팅 락온 링 표시 (내가 조준 중인 적 상단에 십자선/원 렌더링)
+    // 7. 타겟팅 락온 링 표시 (내가 조준 중인 적 상단에 십자선/원 렌더링)
     if (isMe && this.targetPlayer && !this.targetPlayer.isDead && !this.targetPlayer.isFalling) {
       this.renderLockOn(ctx, this.targetPlayer);
     }
@@ -455,10 +514,12 @@ export class Player {
       isDead: this.isDead,
       fallScale: parseFloat(this.fallScale.toFixed(2)),
       fallAlpha: parseFloat(this.fallAlpha.toFixed(2)),
+      hp: Math.round(this.hp),
+      maxHp: this.maxHp,
+      heatPercent: Math.round(this.heatPercent),
       buffs: {
         power: parseFloat(this.buffs.power.toFixed(1)),
-        speed: parseFloat(this.buffs.speed.toFixed(1)),
-        shield: parseFloat(this.buffs.shield.toFixed(1))
+        invincible: parseFloat(this.buffs.invincible.toFixed(1))
       },
       ringOutRank: this.ringOutRank,
       surviveTime: parseFloat(this.surviveTime.toFixed(1))

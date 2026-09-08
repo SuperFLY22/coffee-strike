@@ -57,7 +57,11 @@ export class Obstacle {
     grad.addColorStop(1, '#1e293b');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.roundRect(this.x, this.y, this.width, this.height, 8);
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(this.x, this.y, this.width, this.height, 8);
+    } else {
+      ctx.rect(this.x, this.y, this.width, this.height);
+    }
     ctx.fill();
 
     // 테두리 네온 라인

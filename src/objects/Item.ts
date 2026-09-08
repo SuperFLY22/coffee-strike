@@ -6,7 +6,7 @@ export class Item {
   public x: number;
   public y: number;
   public radius: number = 16;
-  public lifetime: number; // 7초
+  public lifetime: number = 15.0; // 필드에 15초간 잔존
   public active: boolean = true;
   private pulseTimer: number = 0;
 
@@ -15,7 +15,7 @@ export class Item {
     this.type = type;
     this.x = x;
     this.y = y;
-    this.lifetime = ITEM_CONFIGS[type].duration;
+    this.lifetime = 15.0; // 15초 후 자동 소멸
   }
 
   public update(dt: number): void {

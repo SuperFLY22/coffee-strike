@@ -8,6 +8,7 @@ export interface WeaponStats {
   bulletSpeed: number;
   cooldown: number; // 초 단위
   impulse: number; // 넉백 충격량
+  damage: number; // 체력 대미지
   maxAmmo: number; // 제한 모드 탄창
   range: number; // 사거리 (px)
   pelletCount: number; // 발사 수 (샷건=4, 그 외=1)
@@ -20,11 +21,12 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   PISTOL: {
     name: 'Balance Pistol',
     nameKo: '밸런스 피스톨',
-    bulletSpeed: 680,
-    cooldown: 0.32,
-    impulse: 450, // 대폭 상향 (기존 160 -> 450)
+    bulletSpeed: 720,
+    cooldown: 0.30,
+    impulse: 520,
+    damage: 22,
     maxAmmo: 12,
-    range: 520,
+    range: 560,
     pelletCount: 1,
     spreadAngle: 0,
     bulletRadius: 4.5,
@@ -33,11 +35,12 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   SHOTGUN: {
     name: 'Heavy Shotgun',
     nameKo: '헤비 샷건',
-    bulletSpeed: 800,
-    cooldown: 0.80,
-    impulse: 220, // 펠릿당 220 x 4 = 880 (기존 340 -> 880 폭발적 밀림)
+    bulletSpeed: 840,
+    cooldown: 0.75,
+    impulse: 260, // 펠릿당 260 x 4 = 1040
+    damage: 14, // 펠릿당 14 x 4 = 56
     maxAmmo: 4,
-    range: 340,
+    range: 360,
     pelletCount: 4,
     spreadAngle: 0.38,
     bulletRadius: 4,
@@ -46,11 +49,12 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   SNIPER: {
     name: 'Sniper Rifle',
     nameKo: '저격 스나이퍼',
-    bulletSpeed: 1600,
-    cooldown: 1.25,
-    impulse: 1150, // 대폭 상향 (기존 460 -> 1150, 원샷 벼랑 끝 밀림)
+    bulletSpeed: 1700,
+    cooldown: 1.20,
+    impulse: 1350,
+    damage: 70,
     maxAmmo: 3,
-    range: 900,
+    range: 980,
     pelletCount: 1,
     spreadAngle: 0,
     bulletRadius: 6,
@@ -59,11 +63,12 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   MACHINEGUN: {
     name: 'Rapid Machinegun',
     nameKo: '연사 머신건',
-    bulletSpeed: 820,
-    cooldown: 0.09,
-    impulse: 140, // 대폭 상향 (기존 48 -> 140, 빠른 연속 밀림)
+    bulletSpeed: 860,
+    cooldown: 0.08,
+    impulse: 160,
+    damage: 9,
     maxAmmo: 35,
-    range: 440,
+    range: 480,
     pelletCount: 1,
     spreadAngle: 0.08,
     bulletRadius: 3.5,
@@ -71,7 +76,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   }
 };
 
-export type ItemType = 'POWER' | 'SPEED' | 'SHIELD';
+export type ItemType = 'POWER' | 'HEAL' | 'INVINCIBLE';
 
 export interface ItemStats {
   type: ItemType;
@@ -84,24 +89,24 @@ export interface ItemStats {
 export const ITEM_CONFIGS: Record<ItemType, ItemStats> = {
   POWER: {
     type: 'POWER',
-    nameKo: '파워 업',
+    nameKo: '파워 2배',
     duration: 7.0,
     color: '#ef4444', // Red
     icon: '⚡'
   },
-  SPEED: {
-    type: 'SPEED',
-    nameKo: '스피드 업',
-    duration: 7.0,
-    color: '#06b6d4', // Cyan/Blue
-    icon: '👟'
+  HEAL: {
+    type: 'HEAL',
+    nameKo: '체력 +200',
+    duration: 0,
+    color: '#10b981', // Emerald green
+    icon: '🧪'
   },
-  SHIELD: {
-    type: 'SHIELD',
-    nameKo: '헤비 쉴드',
-    duration: 7.0,
-    color: '#eab308', // Yellow/Gold
-    icon: '🛡️'
+  INVINCIBLE: {
+    type: 'INVINCIBLE',
+    nameKo: '무적 5초',
+    duration: 5.0,
+    color: '#f59e0b', // Gold Amber
+    icon: '⭐'
   }
 };
 
@@ -165,10 +170,12 @@ export interface PlayerSnapshot {
   isDead: boolean;
   fallScale: number;
   fallAlpha: number;
+  hp: number;
+  maxHp: number;
+  heatPercent: number;
   buffs: {
     power: number;
-    speed: number;
-    shield: number;
+    invincible: number;
   };
   ringOutRank?: number; // 먼저 떨어진 순위 (1 = 가장 먼저 탈락)
   surviveTime: number; // 생존 시간 (초)
@@ -209,6 +216,7 @@ export interface WorldSnapshot {
   totalDuration: number;
   timeScale: number;
   isSuddenDeath: boolean;
+  arenaRadius: number;
   players: PlayerSnapshot[];
   bullets: BulletSnapshot[];
   obstacles: ObstacleSnapshot[];
