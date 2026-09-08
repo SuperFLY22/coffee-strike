@@ -10,7 +10,7 @@ import {
   WeaponType,
   GameResult
 } from './engine/Types';
-import { NetworkPacket } from './net/Protocol';
+import { NetworkPacket, WorldSnapshot } from './net/Protocol';
 import { Player } from './objects/Player';
 import { ARENA_CONFIG } from './engine/Physics';
 
@@ -119,7 +119,7 @@ class CoffeeStrikeApp {
       this.hud.showCountdown(val);
     };
     this.game.onCountdownFinished = () => {
-      setTimeout(() => this.hud.hideCountdown(), 500);
+      this.hud.hideCountdown();
     };
     this.game.startCountdown();
   }
@@ -227,20 +227,23 @@ class CoffeeStrikeApp {
 
     this.game.spawnObstacles();
 
-    // 게스트들에게 게임 시작 패킷 및 초기 월드 스냅샷 브로드캐스트
+    // 게스트들에게 게임 시작 패킷 및 초기 월드 스냅샷 브로드캐스트 (다중 전송으로 모바일 패킷 유실 방지)
     const initialSnapshot = this.game.createWorldSnapshot();
-    this.network.broadcast({
+    const startPacket: NetworkPacket = {
       type: 'S2C_GAME_START',
       options: this.currentOptions,
       assignedWeapon: 'PISTOL',
       initialSnapshot
-    });
+    };
+    this.network.broadcast(startPacket);
+    setTimeout(() => this.network.broadcast(startPacket), 100);
+    setTimeout(() => this.network.broadcast(startPacket), 300);
 
     this.game.onCountdownTick = (val) => {
       this.hud.showCountdown(val);
     };
     this.game.onCountdownFinished = () => {
-      setTimeout(() => this.hud.hideCountdown(), 500);
+      this.hud.hideCountdown();
     };
     this.game.startCountdown();
 
@@ -259,21 +262,25 @@ class CoffeeStrikeApp {
   /**
    * 게스트: 게임 화면 진입 및 30Hz 인풋 송신 루프 시작
    */
-  private startGuestGameLoop(): void {
+  private startGuestGameLoop(initialSnapshot?: WorldSnapshot): void {
+    if (this.game.isRunning) return;
     this.lobbyUI.hide();
     this.hud.show();
 
     this.game.resetState();
     this.game.setOptions(this.currentOptions);
-    this.game.spawnObstacles();
     this.game.isHost = false;
     this.game.isMultiplayer = true;
+
+    if (initialSnapshot) {
+      this.game.applyWorldSnapshot(initialSnapshot);
+    }
 
     this.game.onCountdownTick = (val) => {
       this.hud.showCountdown(val);
     };
     this.game.onCountdownFinished = () => {
-      setTimeout(() => this.hud.hideCountdown(), 500);
+      this.hud.hideCountdown();
     };
     this.game.startCountdown();
 
@@ -348,16 +355,17 @@ class CoffeeStrikeApp {
       case 'S2C_GAME_START': {
         if (!this.isHost) {
           this.currentOptions = packet.options;
-          if (packet.initialSnapshot) {
-            this.game.applyWorldSnapshot(packet.initialSnapshot);
-          }
-          this.startGuestGameLoop();
+          this.startGuestGameLoop(packet.initialSnapshot);
         }
         break;
       }
 
       case 'S2C_STATE': {
-        if (!this.isHost && this.game.isRunning) {
+        if (!this.isHost) {
+          // 호스트가 게임을 이미 시작했으나 S2C_GAME_START 패킷이 누락되었을 때 자동 자가 복구 (Fail-safe)
+          if (!this.game.isRunning) {
+            this.startGuestGameLoop(packet.snapshot);
+          }
           this.game.applyWorldSnapshot(packet.snapshot);
         }
         break;

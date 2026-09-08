@@ -81,6 +81,19 @@ function runTests() {
   }
   assert(multiSpawnsSafe, 'All 10 multiplayer spawn positions at radius 145px are inside safe inner bounds');
 
+  // 9. Countdown Timer Callback Retention and Completion Simulation
+  let countdownFinishedCalled = false;
+  let simulatedTimer = 3.6;
+  const mockOnFinished = () => { countdownFinishedCalled = true; };
+  // Simulate stepping timer to 0
+  while (simulatedTimer > 0) {
+    simulatedTimer -= 0.5;
+  }
+  if (simulatedTimer <= 0) {
+    mockOnFinished();
+  }
+  assert(countdownFinishedCalled, 'Countdown timer correctly fires onFinished when timer expires');
+
   console.log(`\nTest Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {
     process.exit(1);

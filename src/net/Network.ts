@@ -88,7 +88,7 @@ export class NetworkManager {
   }
 
   private setupGuestConnection(conn: DataConnection): void {
-    conn.on('open', () => {
+    const registerGuest = () => {
       if (this.guestConnections.size >= 9) {
         conn.close();
         return;
@@ -97,9 +97,18 @@ export class NetworkManager {
       if (this.callbacks.onPlayerConnected) {
         this.callbacks.onPlayerConnected(conn.peer);
       }
-    });
+    };
+
+    if (conn.open) {
+      registerGuest();
+    } else {
+      conn.on('open', registerGuest);
+    }
 
     conn.on('data', (data) => {
+      if (!this.guestConnections.has(conn.peer)) {
+        this.guestConnections.set(conn.peer, conn);
+      }
       this.callbacks.onPacketReceived(data as NetworkPacket, conn.peer);
     });
 

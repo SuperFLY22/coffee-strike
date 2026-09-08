@@ -188,7 +188,9 @@ export class Game {
     this.isCountingDown = true;
     this.countdownTimer = 3.6; // 3초 카운트다운 + 0.6초 GO!
     this.lastReportedCountdownSec = -1;
-    this.onCountdownFinished = onFinished;
+    if (onFinished) {
+      this.onCountdownFinished = onFinished;
+    }
     for (const p of this.players.values()) {
       p.fireCooldownTimer = 1.0;
     }

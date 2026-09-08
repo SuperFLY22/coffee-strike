@@ -1,4 +1,5 @@
 import { RoomOptions, Team, WorldSnapshot, GameResult } from '../engine/Types';
+export type { WorldSnapshot };
 
 export type PacketType =
   | 'C2S_JOIN'
