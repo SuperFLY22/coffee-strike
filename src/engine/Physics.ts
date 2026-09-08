@@ -140,7 +140,8 @@ export class Physics {
   ): void {
     const heat = target.heatPercent || 0;
     const heatMultiplier = 1.0 + (heat / 100) * 1.6; // 100%일 때 2.6배, 200%일 때 4.2배 날아감!
-    const effectiveImpulse = (impulse * itemMultiplier * heatMultiplier) / Math.max(0.3, target.mass);
+    // 넉백 30% 완화 (0.70 배수 적용: 기존 3방 링아웃 방지 및 생존 랠리 확보)
+    const effectiveImpulse = (impulse * 0.70 * itemMultiplier * heatMultiplier) / Math.max(0.3, target.mass);
     target.vx += dirX * effectiveImpulse;
     target.vy += dirY * effectiveImpulse;
   }

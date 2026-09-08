@@ -50,6 +50,7 @@ export class Player {
   public surviveTime: number = 0;
   public ringOutRank?: number; // 1이면 가장 먼저 탈락 (커피 당첨자)
   public knockbackStunTimer: number = 0; // 피격 시 조작 제어력 감쇄 타이머
+  public eliminationReported: boolean = false; // 킬피드 중복 알림 방지 일회성 플래그
 
   // 타겟팅 정보
   public targetPlayer: Player | null = null;
@@ -119,7 +120,7 @@ export class Player {
 
     // 넉백 임펄스 적용
     Physics.applyKnockback(this, dirX, dirY, bullet.impulse, bullet.knockbackMultiplier);
-    this.knockbackStunTimer = 0.40; // 0.4초간 조작 저항력 대폭 감쇄
+    this.knockbackStunTimer = 0.25; // 0.25초간 조작 저항력 완화
 
     if (this.hp <= 0) {
       this.isDead = true;
@@ -143,8 +144,8 @@ export class Player {
     if (this.isFalling || this.isDead) return;
 
     if (dx !== 0 || dy !== 0) {
-      // 피격 직후에는 저항력을 25%로 감쇄하여 넉백으로 쭉 밀려나는 쾌감 극대화
-      const controlFactor = this.knockbackStunTimer > 0 ? 0.25 : 1.0;
+      // 피격 직후 저항력 감쇄 완화 (0.45: 넉백 중에도 유저의 필사적 복귀 조작 허용)
+      const controlFactor = this.knockbackStunTimer > 0 ? 0.45 : 1.0;
       this.x += dx * this.currentSpeed * controlFactor * dt;
       this.y += dy * this.currentSpeed * controlFactor * dt;
     }

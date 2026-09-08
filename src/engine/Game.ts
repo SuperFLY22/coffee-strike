@@ -201,6 +201,7 @@ export class Game {
   }
 
   public resetState(): void {
+    this.joystick.reset();
     this.arena.reset();
     ARENA_CONFIG.radius = this.arena.radius;
     ARENA_CONFIG.halfHeight = this.arena.halfHeight;
@@ -226,6 +227,7 @@ export class Game {
    * 3, 2, 1 카운트다운 시작
    */
   public startCountdown(onFinished?: () => void): void {
+    this.joystick.reset();
     this.isCountingDown = true;
     this.countdownTimer = 3.6; // 3초 카운트다운 + 0.6초 GO!
     this.lastReportedCountdownSec = -1;
@@ -396,13 +398,16 @@ export class Game {
     // 7. 플레이어 물리, 버프, 낙사 업데이트 & 자동 격발
     const playerList = Array.from(this.players.values());
     for (const p of playerList) {
-      // 링아웃 콜백
+      // 링아웃 콜백 (호스트 또는 싱글플레이어일 때만 공인 판정 및 탈락 알림 1회 호출)
       p.update(scaledDt, this.arena.radius, this.arena.halfHeight, (eliminatedPlayer) => {
-        if (!eliminatedPlayer.ringOutRank) {
-          const isFirst = this.currentEliminationRank === 1;
-          eliminatedPlayer.ringOutRank = this.currentEliminationRank++;
-          sound.playRingOut();
-          this.onPlayerEliminated?.(eliminatedPlayer.nickname, isFirst);
+        if (this.isHost || !this.isMultiplayer) {
+          if (!eliminatedPlayer.ringOutRank && !eliminatedPlayer.eliminationReported) {
+            eliminatedPlayer.eliminationReported = true;
+            const isFirst = this.currentEliminationRank === 1;
+            eliminatedPlayer.ringOutRank = this.currentEliminationRank++;
+            sound.playRingOut();
+            this.onPlayerEliminated?.(eliminatedPlayer.nickname, isFirst);
+          }
         }
       });
 
@@ -506,8 +511,9 @@ export class Game {
               this.addShockwave(b.x, b.y, 28, b.color);
               sound.playHit();
 
-              // HP 0 도달로 사망 시 링아웃 순위 부여
-              if (target.isDead && !target.ringOutRank) {
+              // HP 0 도달로 사망 시 링아웃 순위 부여 (1회만 발화)
+              if (target.isDead && !target.ringOutRank && !target.eliminationReported) {
+                target.eliminationReported = true;
                 const isFirst = this.currentEliminationRank === 1;
                 target.ringOutRank = this.currentEliminationRank++;
                 sound.playRingOut();
@@ -794,8 +800,16 @@ export class Game {
       p.maxHp = pSnap.maxHp ?? 300;
       p.heatPercent = pSnap.heatPercent ?? 0;
 
-      // 내 플레이어 위치는 스무스 보간
+      // 내 플레이어 위치는 호스트 공인 좌표와 스무스 보간 (위치 불일치 및 자동 이동 고착 방지)
       if (p.id === this.myPlayerId) {
+        const errDist = Math.hypot(pSnap.x - p.x, pSnap.y - p.y);
+        if (errDist > 120) {
+          p.x = pSnap.x;
+          p.y = pSnap.y;
+        } else if (errDist > 2) {
+          p.x += (pSnap.x - p.x) * 0.35;
+          p.y += (pSnap.y - p.y) * 0.35;
+        }
         p.vx = pSnap.vx;
         p.vy = pSnap.vy;
         p.isFalling = pSnap.isFalling;
@@ -825,8 +839,12 @@ export class Game {
         p.surviveTime = pSnap.surviveTime;
       }
 
-      if (!wasDead && p.isDead) {
-        this.onPlayerEliminated?.(p.nickname, p.ringOutRank === 1);
+      // 호스트 스냅샷의 링아웃 순위를 기준으로 게스트 화면 킬피드 정확히 1회만 노출 (폭포 알림 완벽 차단)
+      if (pSnap.ringOutRank && !p.eliminationReported) {
+        p.eliminationReported = true;
+        p.ringOutRank = pSnap.ringOutRank;
+        sound.playRingOut();
+        this.onPlayerEliminated?.(p.nickname, pSnap.ringOutRank === 1);
       }
     }
 

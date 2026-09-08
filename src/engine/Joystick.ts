@@ -26,6 +26,10 @@ export class Joystick {
   private boundMouseDown: (e: MouseEvent) => void;
   private boundMouseMove: (e: MouseEvent) => void;
   private boundMouseUp: (e: MouseEvent) => void;
+  private boundBlur: () => void;
+  private boundVisibilityChange: () => void;
+  private boundContextMenu: (e: MouseEvent) => void;
+  private boundMouseLeave: () => void;
   private isMouseDown: boolean = false;
 
   constructor(private container: HTMLElement) {
@@ -37,6 +41,16 @@ export class Joystick {
     this.boundMouseDown = this.onMouseDown.bind(this);
     this.boundMouseMove = this.onMouseMove.bind(this);
     this.boundMouseUp = this.onMouseUp.bind(this);
+    this.boundBlur = this.reset.bind(this);
+    this.boundVisibilityChange = () => {
+      if (document.hidden) this.reset();
+    };
+    this.boundContextMenu = () => this.reset();
+    this.boundMouseLeave = () => {
+      if (this.isMouseDown) {
+        this.reset();
+      }
+    };
 
     this.attach();
   }
@@ -44,8 +58,27 @@ export class Joystick {
   public setEnabled(val: boolean): void {
     this.enabled = val;
     if (!val) {
-      this.resetTouch();
+      this.reset();
     }
+  }
+
+  /**
+   * 모든 키보드/마우스/터치 입력 상태를 0으로 강제 초기화 (방향 고착 버그 완벽 방지)
+   */
+  public reset(): void {
+    this.active = false;
+    this.isMouseDown = false;
+    this.touchId = null;
+    this.originX = 0;
+    this.originY = 0;
+    this.currentX = 0;
+    this.currentY = 0;
+    this.keys = {
+      up: false,
+      down: false,
+      left: false,
+      right: false
+    };
   }
 
   private attach(): void {
@@ -59,10 +92,16 @@ export class Joystick {
     this.container.addEventListener('mousedown', this.boundMouseDown);
     window.addEventListener('mousemove', this.boundMouseMove);
     window.addEventListener('mouseup', this.boundMouseUp);
+    document.addEventListener('mouseleave', this.boundMouseLeave);
 
     // Keyboard Fallback
     window.addEventListener('keydown', this.boundKeyDown);
     window.addEventListener('keyup', this.boundKeyUp);
+
+    // 포커스 아웃 / 창 전환 / 우클릭 시 키 고착 방지
+    window.addEventListener('blur', this.boundBlur);
+    document.addEventListener('visibilitychange', this.boundVisibilityChange);
+    window.addEventListener('contextmenu', this.boundContextMenu);
   }
 
   public destroy(): void {
@@ -74,9 +113,14 @@ export class Joystick {
     this.container.removeEventListener('mousedown', this.boundMouseDown);
     window.removeEventListener('mousemove', this.boundMouseMove);
     window.removeEventListener('mouseup', this.boundMouseUp);
+    document.removeEventListener('mouseleave', this.boundMouseLeave);
 
     window.removeEventListener('keydown', this.boundKeyDown);
     window.removeEventListener('keyup', this.boundKeyUp);
+
+    window.removeEventListener('blur', this.boundBlur);
+    document.removeEventListener('visibilitychange', this.boundVisibilityChange);
+    window.removeEventListener('contextmenu', this.boundContextMenu);
   }
 
   private onTouchStart(e: TouchEvent): void {
@@ -134,9 +178,9 @@ export class Joystick {
   }
 
   private onMouseDown(e: MouseEvent): void {
-    if (!this.enabled || this.active) return;
+    if (!this.enabled || this.active || e.button !== 0) return;
     const target = e.target as HTMLElement | null;
-    if (target && target.closest('button, input, select, .lobby-container, .hud-top-bar, .hud-bottom-bar, .hud-control-actions, .hud-modal-overlay, .countdown-overlay, .result-modal-card')) {
+    if (target && target.closest('button, input, select, textarea, .lobby-container, .hud-top-bar, .hud-bottom-bar, .hud-control-actions, .hud-modal-overlay, .countdown-overlay, .result-modal-card')) {
       return;
     }
 
@@ -163,7 +207,7 @@ export class Joystick {
   }
 
   private onMouseUp(): void {
-    if (this.isMouseDown) {
+    if (this.isMouseDown || this.active) {
       this.isMouseDown = false;
       this.resetTouch();
     }
@@ -187,49 +231,48 @@ export class Joystick {
   private resetTouch(): void {
     this.active = false;
     this.touchId = null;
+    this.isMouseDown = false;
     this.currentX = this.originX;
     this.currentY = this.originY;
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    switch (e.code) {
-      case 'KeyW':
-      case 'ArrowUp':
-        this.keys.up = true;
-        break;
-      case 'KeyS':
-      case 'ArrowDown':
-        this.keys.down = true;
-        break;
-      case 'KeyA':
-      case 'ArrowLeft':
-        this.keys.left = true;
-        break;
-      case 'KeyD':
-      case 'ArrowRight':
-        this.keys.right = true;
-        break;
+    // 입력창(인풋) 포커스 시 게임 키 입력 차단
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      return;
+    }
+
+    const code = e.code;
+    const key = e.key ? e.key.toLowerCase() : '';
+
+    if (code === 'KeyW' || code === 'ArrowUp' || key === 'w' || key === 'arrowup') {
+      this.keys.up = true;
+      if (code.startsWith('Arrow')) e.preventDefault();
+    } else if (code === 'KeyS' || code === 'ArrowDown' || key === 's' || key === 'arrowdown') {
+      this.keys.down = true;
+      if (code.startsWith('Arrow')) e.preventDefault();
+    } else if (code === 'KeyA' || code === 'ArrowLeft' || key === 'a' || key === 'arrowleft') {
+      this.keys.left = true;
+      if (code.startsWith('Arrow')) e.preventDefault();
+    } else if (code === 'KeyD' || code === 'ArrowRight' || key === 'd' || key === 'arrowright') {
+      this.keys.right = true;
+      if (code.startsWith('Arrow')) e.preventDefault();
     }
   }
 
   private onKeyUp(e: KeyboardEvent): void {
-    switch (e.code) {
-      case 'KeyW':
-      case 'ArrowUp':
-        this.keys.up = false;
-        break;
-      case 'KeyS':
-      case 'ArrowDown':
-        this.keys.down = false;
-        break;
-      case 'KeyA':
-      case 'ArrowLeft':
-        this.keys.left = false;
-        break;
-      case 'KeyD':
-      case 'ArrowRight':
-        this.keys.right = false;
-        break;
+    const code = e.code;
+    const key = e.key ? e.key.toLowerCase() : '';
+
+    if (code === 'KeyW' || code === 'ArrowUp' || key === 'w' || key === 'arrowup') {
+      this.keys.up = false;
+    } else if (code === 'KeyS' || code === 'ArrowDown' || key === 's' || key === 'arrowdown') {
+      this.keys.down = false;
+    } else if (code === 'KeyA' || code === 'ArrowLeft' || key === 'a' || key === 'arrowleft') {
+      this.keys.left = false;
+    } else if (code === 'KeyD' || code === 'ArrowRight' || key === 'd' || key === 'arrowright') {
+      this.keys.right = false;
     }
   }
 

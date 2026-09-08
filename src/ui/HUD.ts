@@ -204,10 +204,24 @@ export class HUD {
     }, 2200);
   }
 
+  private lastKillfeedTimes = new Map<string, number>();
+
   /**
-   * 전장 링아웃 / 탈락 킬피드 토스트 출력
+   * 전장 링아웃 / 탈락 킬피드 토스트 출력 (중복 방지 및 최대 표시 개수 제한)
    */
   public showKillfeed(nickname: string, isFirst: boolean): void {
+    const now = performance.now();
+    const lastTime = this.lastKillfeedTimes.get(nickname) || 0;
+    if (now - lastTime < 3000) {
+      return; // 3초 이내 동일 플레이어 탈락 알림 중복 무시
+    }
+    this.lastKillfeedTimes.set(nickname, now);
+
+    // 킬피드가 너무 많이 쌓이지 않도록 최대 4개로 제한
+    while (this.killfeedContainerEl.children.length >= 4) {
+      this.killfeedContainerEl.firstElementChild?.remove();
+    }
+
     const item = document.createElement('div');
     item.className = `killfeed-item ${isFirst ? 'first-blood' : ''}`;
     item.innerHTML = isFirst
@@ -334,7 +348,7 @@ export class HUD {
    */
   public showGameOver(result: GameResult, isHost: boolean): void {
     const playerCount = result.rankings.length;
-    const coffeeCost = playerCount * 4500;
+    const coffeeCost = playerCount * 3000;
     const orderNo = 'CS-' + Math.floor(1000 + Math.random() * 9000);
     const nowStr = new Date().toLocaleString('ko-KR', {
       year: 'numeric', month: '2-digit', day: '2-digit',

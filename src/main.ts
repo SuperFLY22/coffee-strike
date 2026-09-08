@@ -78,6 +78,10 @@ class CoffeeStrikeApp {
     this.game.gameOverCallback = (result: GameResult) => {
       this.game.stop();
       this.isWaitingRematch = true;
+      if (this.netSyncTimer) {
+        clearInterval(this.netSyncTimer);
+        this.netSyncTimer = null;
+      }
       if (this.isMultiplayer && this.isHost) {
         this.network.broadcast({
           type: 'S2C_GAME_OVER',
@@ -409,12 +413,13 @@ class CoffeeStrikeApp {
 
       case 'S2C_STATE': {
         if (!this.isHost) {
-          // 호스트가 게임을 이미 시작했으나 S2C_GAME_START 패킷이 누락되었거나 결과 화면에 멈춰있는 경우 자동 자가 복구
-          if (!this.game.isRunning || this.game.isGameOver || this.isWaitingRematch) {
-            this.isWaitingRematch = false;
+          // 결과창 대기 중(isWaitingRematch)이거나 이미 게임 오버인 경우 스냅샷으로 인한 무한 재시작 방지
+          if (!this.game.isRunning && !this.isWaitingRematch && !this.game.isGameOver) {
             this.startGuestGameLoop(packet.snapshot);
           }
-          this.game.applyWorldSnapshot(packet.snapshot);
+          if (this.game.isRunning) {
+            this.game.applyWorldSnapshot(packet.snapshot);
+          }
         }
         break;
       }
@@ -422,6 +427,10 @@ class CoffeeStrikeApp {
       case 'S2C_GAME_OVER': {
         this.game.stop();
         this.isWaitingRematch = true;
+        if (this.netSyncTimer) {
+          clearInterval(this.netSyncTimer);
+          this.netSyncTimer = null;
+        }
         this.hud.showGameOver(packet.result, false);
         break;
       }
