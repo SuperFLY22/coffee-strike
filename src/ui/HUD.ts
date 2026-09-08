@@ -14,6 +14,8 @@ export class HUD {
 
   private gameOverModalEl!: HTMLElement;
 
+  private countdownOverlayEl!: HTMLElement;
+
   public onReplayClick?: () => void;
   public onExitLobbyClick?: () => void;
 
@@ -23,13 +25,10 @@ export class HUD {
   }
 
   private initElements(): void {
-    // Top Bar HUD
+    // 1. Top Bar HUD: 게임 진행 상태(타이머, 배속, 생존인원)만 중앙 정렬 배치
     this.topBarEl = document.createElement('div');
     this.topBarEl.className = 'hud-top-bar';
     this.topBarEl.innerHTML = `
-      <div class="hud-left-actions">
-        <button id="btn-hud-exit" class="btn-hud-exit" title="게임 종료 및 로비로 나가기">🚪 나가기</button>
-      </div>
       <div class="hud-item hud-timer-box">
         <span class="hud-label">남은 시간</span>
         <span class="hud-val timer-val" id="hud-timer">02:00</span>
@@ -38,20 +37,31 @@ export class HUD {
         <div class="hud-badge scale-badge" id="hud-scale">1.0x 배속</div>
         <div class="hud-badge sudden-death-tag" id="hud-sd-tag" style="display:none;">⚡ 서든데스</div>
       </div>
-      <div class="hud-right-box">
-        <div class="hud-item hud-alive-box">
-          <span class="hud-label">생존 인원</span>
-          <span class="hud-val alive-val" id="hud-alive">4 / 4</span>
-        </div>
-        <button id="btn-sound-toggle" class="btn-sound" title="사운드 온/오프">🔊</button>
+      <div class="hud-item hud-alive-box">
+        <span class="hud-label">생존 인원</span>
+        <span class="hud-val alive-val" id="hud-alive">4 / 4</span>
       </div>
     `;
     this.container.appendChild(this.topBarEl);
 
-    // Bottom Weapon & HP Bar
+    // 2. Countdown Overlay (3, 2, 1, GO!)
+    this.countdownOverlayEl = document.createElement('div');
+    this.countdownOverlayEl.className = 'countdown-overlay';
+    this.countdownOverlayEl.style.display = 'none';
+    this.countdownOverlayEl.innerHTML = `
+      <div class="countdown-number" id="hud-countdown-num">3</div>
+    `;
+    this.container.appendChild(this.countdownOverlayEl);
+
+    // 3. Bottom HUD (하단 우측 조작 버튼 + 체력 & 무기 상태 카드)
     const bottomBar = document.createElement('div');
     bottomBar.className = 'hud-bottom-bar';
     bottomBar.innerHTML = `
+      <div class="hud-control-actions">
+        <button id="btn-sound-toggle" class="btn-sound" title="사운드 온/오프">🔊</button>
+        <button id="btn-hud-exit" class="btn-hud-exit" title="게임 종료 및 로비로 나가기">🚪 나가기</button>
+      </div>
+
       <div class="hud-status-cards">
         <div class="hud-hp-card">
           <div class="hp-info">
@@ -102,11 +112,11 @@ export class HUD {
     this.weaponBadgeEl = bottomBar.querySelector('#hud-weapon-name') as HTMLElement;
     this.ammoBarEl = bottomBar.querySelector('#hud-ammo-fill') as HTMLElement;
 
-    // 나가기 버튼 바인딩
-    const exitBtn = this.topBarEl.querySelector('#btn-hud-exit') as HTMLButtonElement;
+    // 하단 나가기 버튼 바인딩 (모바일 터치 최적화)
+    const exitBtn = bottomBar.querySelector('#btn-hud-exit') as HTMLButtonElement;
     if (exitBtn) {
-      exitBtn.style.pointerEvents = 'auto';
-      exitBtn.addEventListener('click', () => {
+      exitBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (confirm('정말로 게임을 종료하고 로비로 나가시겠습니까?')) {
           if (this.onExitLobbyClick) {
             this.onExitLobbyClick();
@@ -115,14 +125,30 @@ export class HUD {
       });
     }
 
-    const soundBtn = this.topBarEl.querySelector('#btn-sound-toggle') as HTMLButtonElement;
+    const soundBtn = bottomBar.querySelector('#btn-sound-toggle') as HTMLButtonElement;
     if (soundBtn) {
-      soundBtn.style.pointerEvents = 'auto';
-      soundBtn.addEventListener('click', () => {
+      soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         sound.enabled = !sound.enabled;
         soundBtn.textContent = sound.enabled ? '🔊' : '🔇';
       });
     }
+  }
+
+  public showCountdown(val: number | string): void {
+    this.countdownOverlayEl.style.display = 'flex';
+    const numEl = this.countdownOverlayEl.querySelector('#hud-countdown-num') as HTMLElement;
+    if (numEl) {
+      numEl.textContent = String(val);
+      numEl.className = `countdown-number ${val === 'GO!' ? 'go' : ''}`;
+      numEl.style.animation = 'none';
+      void numEl.offsetHeight; // force reflow
+      numEl.style.animation = '';
+    }
+  }
+
+  public hideCountdown(): void {
+    this.countdownOverlayEl.style.display = 'none';
   }
 
   public update(game: Game): void {
@@ -287,5 +313,6 @@ export class HUD {
     const b = this.container.querySelector('.hud-bottom-bar') as HTMLElement;
     if (b) b.style.display = 'none';
     this.hideGameOver();
+    this.hideCountdown();
   }
 }

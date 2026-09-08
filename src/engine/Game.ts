@@ -57,6 +57,13 @@ export class Game {
   private shockwaves: Array<{ x: number; y: number; radius: number; maxRadius: number; color: string; alpha: number }> = [];
   public screenShake: number = 0; // 화면 흔들림 강도
 
+  // 시작 3, 2, 1, GO! 카운트다운
+  public isCountingDown: boolean = false;
+  public countdownTimer: number = 0;
+  private lastReportedCountdownSec: number = -1;
+  public onCountdownTick?: (val: number | 'GO!') => void;
+  public onCountdownFinished?: () => void;
+
   constructor(canvas: HTMLCanvasElement, container: HTMLElement) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
@@ -82,51 +89,54 @@ export class Game {
   }
 
   /**
-   * 로컬 싱글 플레이 (더미 봇 3기 포함) 초기화
+   * 로컬 싱글 플레이 (더미 봇 3기 포함) 초기화: 즉사 방지 안전 배치
    */
   public initLocalGame(myNickname: string = '나'): void {
     this.isHost = true;
     this.isMultiplayer = false;
     this.resetState();
 
-    // 내 플레이어 생성
     const weapons: WeaponType[] = ['PISTOL', 'SHOTGUN', 'SNIPER', 'MACHINEGUN'];
     const randomWeapon = weapons[Math.floor(Math.random() * weapons.length)];
+
+    // 1. 내 플레이어 (하단 중앙 안전 구역, 링 경계로부터 250px 이상 안전 거리 확보)
     const me = new Player(
       this.myPlayerId,
       myNickname,
       'NONE',
       ARENA_CONFIG.centerX,
-      ARENA_CONFIG.centerY + 120,
+      ARENA_CONFIG.centerY + 160,
       randomWeapon,
       true,
       false
     );
+    me.fireCooldownTimer = 1.0;
     this.players.set(me.id, me);
 
-    // 더미 봇 3기 생성 (서로 다른 무기 분배)
-    const botNames = ['알파봇', '베타봇', '감마봇'];
-    const botAngles = [Math.PI * 0.2, Math.PI * 0.8, Math.PI * 1.5];
+    // 2. 더미 봇 3기 (상단 중앙, 좌측 중앙, 우측 중앙 엄폐물 주변으로 안전 분산)
+    const botConfigs = [
+      { name: '알파봇', x: ARENA_CONFIG.centerX, y: ARENA_CONFIG.centerY - 160 },
+      { name: '베타봇', x: ARENA_CONFIG.centerX - 180, y: ARENA_CONFIG.centerY },
+      { name: '감마봇', x: ARENA_CONFIG.centerX + 180, y: ARENA_CONFIG.centerY }
+    ];
 
-    for (let i = 0; i < 3; i++) {
-      const bWeapon = weapons[(i + 1) % weapons.length];
-      const bx = ARENA_CONFIG.centerX + Math.cos(botAngles[i]) * 150;
-      const by = ARENA_CONFIG.centerY + Math.sin(botAngles[i]) * 150;
+    botConfigs.forEach((bConf, idx) => {
+      const bWeapon = weapons[(idx + 1) % weapons.length];
       const bot = new Player(
-        `bot_${i + 1}`,
-        botNames[i],
+        `bot_${idx + 1}`,
+        bConf.name,
         'NONE',
-        bx,
-        by,
+        bConf.x,
+        bConf.y,
         bWeapon,
         false,
         true
       );
+      bot.fireCooldownTimer = 1.0;
       this.players.set(bot.id, bot);
-    }
+    });
 
     this.spawnObstacles();
-    this.start();
   }
 
   /**
@@ -166,11 +176,29 @@ export class Game {
     this.currentEliminationRank = 1;
     this.isGameOver = false;
     this.itemSpawnTimer = 5.0;
+    this.isCountingDown = false;
+    this.countdownTimer = 0;
+    this.lastReportedCountdownSec = -1;
+  }
+
+  /**
+   * 3, 2, 1 카운트다운 시작
+   */
+  public startCountdown(onFinished?: () => void): void {
+    this.isCountingDown = true;
+    this.countdownTimer = 3.6; // 3초 카운트다운 + 0.6초 GO!
+    this.lastReportedCountdownSec = -1;
+    this.onCountdownFinished = onFinished;
+    for (const p of this.players.values()) {
+      p.fireCooldownTimer = 1.0;
+    }
+    this.start();
   }
 
   public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
+    this.joystick.setEnabled(true);
     this.lastTime = performance.now();
     this.loop = this.loop.bind(this);
     this.animFrameId = requestAnimationFrame(this.loop);
@@ -178,6 +206,8 @@ export class Game {
 
   public stop(): void {
     this.isRunning = false;
+    this.isCountingDown = false;
+    this.joystick.setEnabled(false);
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
@@ -204,6 +234,33 @@ export class Game {
 
   public update(scaledDt: number, realDt: number): void {
     if (this.isGameOver) return;
+
+    // 0. 시작 3, 2, 1 카운트다운 처리
+    if (this.isCountingDown) {
+      this.countdownTimer -= realDt;
+      if (this.countdownTimer > 0.6) {
+        const sec = Math.ceil(this.countdownTimer - 0.6); // 3, 2, 1
+        if (sec !== this.lastReportedCountdownSec) {
+          this.lastReportedCountdownSec = sec;
+          sound.playCountdownBeep(false);
+          if (this.onCountdownTick) this.onCountdownTick(sec);
+        }
+      } else if (this.countdownTimer <= 0.6 && this.countdownTimer > 0) {
+        if (this.lastReportedCountdownSec !== 0) {
+          this.lastReportedCountdownSec = 0;
+          sound.playCountdownBeep(true);
+          if (this.onCountdownTick) this.onCountdownTick('GO!');
+          // 전원 2.0초간 시작 무적 쉴드 부여 (즉사 방지)
+          for (const p of this.players.values()) {
+            p.applyBuff('INVINCIBLE', 2.0);
+          }
+        }
+      } else {
+        this.isCountingDown = false;
+        if (this.onCountdownFinished) this.onCountdownFinished();
+      }
+      return; // 카운트다운 동안에는 경기 타이머/공격 연산 일시정지
+    }
 
     // 1. 경기 시간 업데이트
     this.timeRemaining -= scaledDt;

@@ -58,6 +58,29 @@ function runTests() {
   assert(ITEM_CONFIGS.INVINCIBLE.duration === 5.0, 'Invincible item duration is 5.0s');
   assert(ITEM_CONFIGS.HEAL.nameKo === '체력 +200', 'Heal item restores 200 HP');
 
+  // 8. Safe Spawn Placement Verification (Single Player & Multiplayer Inner Radius)
+  const singleSpawns = [
+    { x: ARENA_CONFIG.centerX, y: ARENA_CONFIG.centerY + 160 },
+    { x: ARENA_CONFIG.centerX, y: ARENA_CONFIG.centerY - 160 },
+    { x: ARENA_CONFIG.centerX - 180, y: ARENA_CONFIG.centerY },
+    { x: ARENA_CONFIG.centerX + 180, y: ARENA_CONFIG.centerY }
+  ];
+  const allSpawnsSafe = singleSpawns.every(pos => !Physics.isOutOfArena(pos.x, pos.y));
+  assert(allSpawnsSafe, 'All single player safe spawn points are strictly inside arena bounds');
+
+  // Multi-spawn points inside safe inner circle (r=145)
+  let multiSpawnsSafe = true;
+  for (let i = 0; i < 10; i++) {
+    const angle = (Math.PI * 2 / 10) * i;
+    const mx = ARENA_CONFIG.centerX + Math.cos(angle) * 145;
+    const my = ARENA_CONFIG.centerY + Math.sin(angle) * 145;
+    if (Physics.isOutOfArena(mx, my)) {
+      multiSpawnsSafe = false;
+      break;
+    }
+  }
+  assert(multiSpawnsSafe, 'All 10 multiplayer spawn positions at radius 145px are inside safe inner bounds');
+
   console.log(`\nTest Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {
     process.exit(1);

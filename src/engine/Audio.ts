@@ -236,6 +236,52 @@ class SoundManager {
       osc.stop(startTime + 0.35);
     });
   }
+
+  /**
+   * 카운트다운 비프음 (3, 2, 1 및 GO!)
+   */
+  public playCountdownBeep(isGo: boolean = false): void {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    if (!isGo) {
+      // 3, 2, 1 준비 비프음 (청명한 587Hz D5음)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.18);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+    } else {
+      // GO! 시작 팡파레 (상승 2화음 880Hz -> 1174Hz)
+      const freqs = [880, 1174.66];
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime + idx * 0.04;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.35, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.35);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 0.35);
+      });
+    }
+  }
 }
 
 export const sound = new SoundManager();

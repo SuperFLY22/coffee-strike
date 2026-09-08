@@ -11,13 +11,14 @@ export class LobbyUI {
   private container: HTMLElement;
   private rootEl!: HTMLElement;
   private callbacks: LobbyCallbacks;
-
-  public currentRoomCode: string | null = null;
+  private currentRoomCode: string = '';
   public isHost: boolean = false;
+  private nickname: string = '';
 
   constructor(container: HTMLElement, callbacks: LobbyCallbacks) {
     this.container = container;
     this.callbacks = callbacks;
+    this.nickname = '요원_' + Math.floor(100 + Math.random() * 900);
     this.init();
   }
 
@@ -47,8 +48,6 @@ export class LobbyUI {
   }
 
   public renderMainMenu(): void {
-    const randomNick = '요원_' + Math.floor(100 + Math.random() * 900);
-
     this.rootEl.innerHTML = `
       <div class="lobby-card">
         <div class="lobby-header">
@@ -59,21 +58,21 @@ export class LobbyUI {
 
         <div class="form-group">
           <label class="form-label" for="user-nick">닉네임</label>
-          <input type="text" id="user-nick" class="form-input" value="${randomNick}" maxlength="10" placeholder="닉네임 입력">
+          <input type="text" id="user-nick" class="form-input" value="${this.nickname}" maxlength="10" placeholder="닉네임 입력">
         </div>
 
         <div class="lobby-actions">
-          <button id="btn-play-single" class="btn btn-emerald">
+          <button type="button" id="btn-play-single" class="btn btn-emerald">
             🤖 싱글 플레이 (봇 3기와 즉시 테스트)
           </button>
 
           <div class="divider"><span>또는 멀티플레이어</span></div>
 
           <div class="multi-btn-row">
-            <button id="btn-open-create" class="btn btn-primary">
+            <button type="button" id="btn-open-create" class="btn btn-primary">
               👑 방 만들기 (호스트)
             </button>
-            <button id="btn-open-join" class="btn btn-secondary">
+            <button type="button" id="btn-open-join" class="btn btn-secondary">
               🔗 방 참가하기
             </button>
           </div>
@@ -81,17 +80,27 @@ export class LobbyUI {
       </div>
     `;
 
+    const nickInput = this.rootEl.querySelector('#user-nick') as HTMLInputElement;
+    nickInput?.addEventListener('input', () => {
+      this.nickname = nickInput.value.trim();
+    });
+
     // 이벤트 리스너
     this.rootEl.querySelector('#btn-play-single')?.addEventListener('click', () => {
-      const nick = (this.rootEl.querySelector('#user-nick') as HTMLInputElement).value.trim() || '요원';
+      const nick = nickInput?.value.trim() || this.nickname || '요원';
+      this.nickname = nick;
       this.callbacks.onStartSinglePlayer(nick);
     });
 
     this.rootEl.querySelector('#btn-open-create')?.addEventListener('click', () => {
+      const nick = nickInput?.value.trim() || this.nickname || '방장';
+      this.nickname = nick;
       this.renderCreateRoom();
     });
 
     this.rootEl.querySelector('#btn-open-join')?.addEventListener('click', () => {
+      const nick = nickInput?.value.trim() || this.nickname || '참가자';
+      this.nickname = nick;
       this.renderJoinRoom();
     });
   }
@@ -153,8 +162,8 @@ export class LobbyUI {
         </div>
 
         <div class="btn-group-row">
-          <button id="btn-back-menu" class="btn btn-secondary">뒤로가기</button>
-          <button id="btn-confirm-create" class="btn btn-primary">룸 개설 및 대기실 입장</button>
+          <button type="button" id="btn-back-menu" class="btn btn-secondary">뒤로가기</button>
+          <button type="button" id="btn-confirm-create" class="btn btn-primary">룸 개설 및 대기실 입장</button>
         </div>
       </div>
     `;
@@ -186,12 +195,12 @@ export class LobbyUI {
         ammoMode
       };
 
-      this.callbacks.onCreateRoom(nick, options);
+      this.callbacks.onCreateRoom(this.nickname || '방장', options);
     });
   }
 
   public renderJoinRoom(): void {
-    const nick = (this.rootEl.querySelector('#user-nick') as HTMLInputElement)?.value.trim() || '참가자';
+    const nick = this.nickname || '참가자';
 
     this.rootEl.innerHTML = `
       <div class="lobby-card">

@@ -1,6 +1,7 @@
 import { JoystickInput } from './Types';
 
 export class Joystick {
+  public enabled: boolean = false; // 게임 실행 중에만 활성화
   private active: boolean = false;
   private touchId: number | null = null;
   private originX: number = 0;
@@ -40,6 +41,13 @@ export class Joystick {
     this.attach();
   }
 
+  public setEnabled(val: boolean): void {
+    this.enabled = val;
+    if (!val) {
+      this.resetTouch();
+    }
+  }
+
   private attach(): void {
     // Touch events on the container
     this.container.addEventListener('touchstart', this.boundTouchStart, { passive: false });
@@ -72,7 +80,14 @@ export class Joystick {
   }
 
   private onTouchStart(e: TouchEvent): void {
-    if (this.active) return;
+    if (!this.enabled || this.active) return;
+
+    // UI 요소(버튼, 인풋, 셀렉트, 모달 등) 터치 시 조이스틱 터치 가로채기 방지
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('button, input, select, .lobby-container, .hud-top-bar, .hud-bottom-bar, .hud-control-actions, .hud-modal-overlay, .countdown-overlay, .result-modal-card')) {
+      return;
+    }
+
     const rect = this.container.getBoundingClientRect();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -94,7 +109,7 @@ export class Joystick {
   }
 
   private onTouchMove(e: TouchEvent): void {
-    if (!this.active || this.touchId === null) return;
+    if (!this.enabled || !this.active || this.touchId === null) return;
     const rect = this.container.getBoundingClientRect();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -119,6 +134,12 @@ export class Joystick {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (!this.enabled || this.active) return;
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest('button, input, select, .lobby-container, .hud-top-bar, .hud-bottom-bar, .hud-control-actions, .hud-modal-overlay, .countdown-overlay, .result-modal-card')) {
+      return;
+    }
+
     const rect = this.container.getBoundingClientRect();
     const relX = e.clientX - rect.left;
     const relY = e.clientY - rect.top;

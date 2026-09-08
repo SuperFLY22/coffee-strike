@@ -114,6 +114,14 @@ class CoffeeStrikeApp {
     this.lobbyUI.hide();
     this.hud.show();
     this.game.initLocalGame(nickname);
+
+    this.game.onCountdownTick = (val) => {
+      this.hud.showCountdown(val);
+    };
+    this.game.onCountdownFinished = () => {
+      setTimeout(() => this.hud.hideCountdown(), 500);
+    };
+    this.game.startCountdown();
   }
 
   /**
@@ -192,10 +200,13 @@ class CoffeeStrikeApp {
     const weapons: WeaponType[] = ['PISTOL', 'SHOTGUN', 'SNIPER', 'MACHINEGUN'];
     const totalCount = this.lobbyPlayers.length;
 
-    // 플레이어들을 원형으로 균등 배치
+    // 플레이어들을 링 경계로부터 안전한 중심 반경(145px)으로 균등 분산 배치 (즉사 방지)
+    const angleStep = (Math.PI * 2) / Math.max(1, totalCount);
+    const startAngle = Math.PI / 2; // 호스트 플레이어 6시 하단 배치
+
     this.lobbyPlayers.forEach((lp, idx) => {
-      const angle = (Math.PI * 2 / totalCount) * idx;
-      const dist = 160;
+      const angle = startAngle + angleStep * idx;
+      const dist = 145;
       const x = ARENA_CONFIG.centerX + Math.cos(angle) * dist;
       const y = ARENA_CONFIG.centerY + Math.sin(angle) * dist;
       const weapon = weapons[Math.floor(Math.random() * weapons.length)];
@@ -210,11 +221,11 @@ class CoffeeStrikeApp {
         lp.isHost,
         false
       );
+      player.fireCooldownTimer = 1.0;
       this.game.players.set(player.id, player);
     });
 
     this.game.spawnObstacles();
-    this.game.start();
 
     // 게스트들에게 게임 시작 패킷 및 초기 월드 스냅샷 브로드캐스트
     const initialSnapshot = this.game.createWorldSnapshot();
@@ -224,6 +235,14 @@ class CoffeeStrikeApp {
       assignedWeapon: 'PISTOL',
       initialSnapshot
     });
+
+    this.game.onCountdownTick = (val) => {
+      this.hud.showCountdown(val);
+    };
+    this.game.onCountdownFinished = () => {
+      setTimeout(() => this.hud.hideCountdown(), 500);
+    };
+    this.game.startCountdown();
 
     // 30Hz (약 33ms) 월드 스냅샷 브로드캐스트 시작
     if (this.netSyncTimer) clearInterval(this.netSyncTimer);
@@ -249,12 +268,19 @@ class CoffeeStrikeApp {
     this.game.spawnObstacles();
     this.game.isHost = false;
     this.game.isMultiplayer = true;
-    this.game.start();
+
+    this.game.onCountdownTick = (val) => {
+      this.hud.showCountdown(val);
+    };
+    this.game.onCountdownFinished = () => {
+      setTimeout(() => this.hud.hideCountdown(), 500);
+    };
+    this.game.startCountdown();
 
     // 30Hz로 내 조이스틱 입력을 호스트에게 전송
     if (this.netSyncTimer) clearInterval(this.netSyncTimer);
     this.netSyncTimer = window.setInterval(() => {
-      if (this.game.isRunning) {
+      if (this.game.isRunning && !this.game.isCountingDown) {
         const input = this.game.joystick.getInput();
         this.network.sendToHost({
           type: 'C2S_INPUT',
