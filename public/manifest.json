@@ -1,0 +1,23 @@
+{
+  "name": "Coffee Strike (커피 스트라이크)",
+  "short_name": "CoffeeStrike",
+  "description": "10인 실시간 넉아웃 슈터: 오늘 커피 살 사람을 정하라!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
