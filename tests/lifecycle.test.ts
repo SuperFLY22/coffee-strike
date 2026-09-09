@@ -16,6 +16,8 @@ function setupMockEnvironment() {
   (global as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 16) as any;
   (global as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
   (global as any).document = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
     createElement: (tag: string) => {
       const el: any = {
         className: '',

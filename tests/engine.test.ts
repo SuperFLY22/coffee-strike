@@ -34,10 +34,10 @@ function runTests() {
   Physics.applyKnockback(powerTarget, 1, 0, WEAPON_CONFIGS.SNIPER.impulse, 2.0);
   assert(powerTarget.vx === WEAPON_CONFIGS.SNIPER.impulse * 2, 'Power buff applies 2.0x knockback multiplier');
 
-  // 4. Heat% Knockback Scaling (Heat 100% -> 2.6x multiplier)
+  // 4. Heat% Knockback Scaling (Heat 100% -> 1.8x multiplier)
   const heatedTarget = { vx: 0, vy: 0, mass: 1.0, heatPercent: 100 };
   Physics.applyKnockback(heatedTarget, 1, 0, 100, 1.0);
-  assert(Math.abs(heatedTarget.vx - 260) < 0.01, 'Heat 100% scales knockback by 2.6x');
+  assert(Math.abs(heatedTarget.vx - 180) < 0.01, 'Heat 100% scales knockback by 1.8x');
 
   // 5. Circle-Rect (Obstacle) Collision Detection
   const rect = { x: 100, y: 100, width: 50, height: 50 };
@@ -47,10 +47,10 @@ function runTests() {
   const noCollision = Physics.checkCircleRect(50, 50, 10, rect.x, rect.y, rect.width, rect.height);
   assert(!noCollision.collided, 'Distant circle reports collided = false');
 
-  // 6. Weapon 4 Types Configuration Validation
-  assert(WEAPON_CONFIGS.PISTOL.impulse === 520, 'Pistol impulse is 520');
+  // 6. Weapon 4 Types Configuration Validation (Balanced)
+  assert(WEAPON_CONFIGS.PISTOL.impulse === 55, 'Pistol impulse is 55');
   assert(WEAPON_CONFIGS.SHOTGUN.pelletCount === 4, 'Shotgun has 4 pellets');
-  assert(WEAPON_CONFIGS.SNIPER.damage === 70, 'Sniper has high 70 damage');
+  assert(WEAPON_CONFIGS.SNIPER.damage === 25, 'Sniper balanced damage is 25');
   assert(WEAPON_CONFIGS.MACHINEGUN.cooldown === 0.08, 'Machinegun has rapid 0.08s cooldown');
 
   // 7. New Item Configs Validation

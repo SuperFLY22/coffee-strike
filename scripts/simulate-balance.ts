@@ -89,9 +89,10 @@ for (let r = 0; r < TOTAL_ROUNDS; r++) {
 
             // 대미지 및 넉백 적용
             const totalImpulse = cfg.impulse * (cfg.pelletCount > 1 ? cfg.pelletCount * 0.75 : 1);
+            const totalDamage = cfg.damage * (cfg.pelletCount > 1 ? cfg.pelletCount * 0.75 : 1);
             Physics.applyKnockback(target, dirX, dirY, totalImpulse, 1.0);
-            target.heatPercent += cfg.damage * 0.8;
-            target.hp -= cfg.damage;
+            target.heatPercent += totalDamage * 0.4;
+            target.hp -= totalDamage;
 
             // 링 아웃 또는 HP 0 체크
             if (Physics.isOutOfArena(target.x, target.y) || target.hp <= 0) {

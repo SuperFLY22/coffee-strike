@@ -115,12 +115,12 @@ export class Player {
 
     // HP 감쇄
     this.hp = Math.max(0, this.hp - bullet.damage);
-    // 누적 대미지% 증가 (맞을수록 넉백 기하급수 증가)
-    this.heatPercent = Math.min(350, this.heatPercent + bullet.damage * 1.5);
+    // 누적 대미지% 증가 (10발 이상 피격 랠리 유지를 위해 완만하게 누적)
+    this.heatPercent = Math.min(200, this.heatPercent + bullet.damage * 0.4);
 
     // 넉백 임펄스 적용
     Physics.applyKnockback(this, dirX, dirY, bullet.impulse, bullet.knockbackMultiplier);
-    this.knockbackStunTimer = 0.25; // 0.25초간 조작 저항력 완화
+    this.knockbackStunTimer = 0.15; // 0.15초 후 즉각적인 반격/복귀 조작 허용
 
     if (this.hp <= 0) {
       this.isDead = true;

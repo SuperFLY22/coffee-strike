@@ -339,8 +339,14 @@ class CoffeeStrikeApp {
               team: packet.team
             });
           }
-          // 전체 대기실 동기화 패킷 브로드캐스트
+          // 전체 대기실 동기화 패킷 브로드캐스트 및 신규 참가자에게 즉시 개별 보장 전송
           this.broadcastLobbySync();
+          this.network.sendToPeer(packet.id, {
+            type: 'S2C_LOBBY_SYNC',
+            roomCode: this.network.currentRoomCode,
+            options: this.currentOptions,
+            players: this.lobbyPlayers
+          });
           this.lobbyUI.renderWaitingRoom(
             this.network.currentRoomCode,
             true,

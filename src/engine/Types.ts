@@ -21,10 +21,10 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   PISTOL: {
     name: 'Balance Pistol',
     nameKo: '밸런스 피스톨',
-    bulletSpeed: 720,
-    cooldown: 0.30,
-    impulse: 520,
-    damage: 22,
+    bulletSpeed: 700,
+    cooldown: 0.38,
+    impulse: 55, // 10발 누적 피격 시 장외 또는 사망
+    damage: 10,
     maxAmmo: 12,
     range: 560,
     pelletCount: 1,
@@ -35,11 +35,11 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   SHOTGUN: {
     name: 'Heavy Shotgun',
     nameKo: '헤비 샷건',
-    bulletSpeed: 840,
-    cooldown: 0.75,
-    impulse: 260, // 펠릿당 260 x 4 = 1040
-    damage: 14, // 펠릿당 14 x 4 = 56
-    maxAmmo: 4,
+    bulletSpeed: 760,
+    cooldown: 0.65,
+    impulse: 32, // 펠릿당 32 (4발 전탄 128)
+    damage: 6.5, // 펠릿당 6.5 (4발 전탄 26, 4회 근접 적중 시 사망)
+    maxAmmo: 5,
     range: 360,
     pelletCount: 4,
     spreadAngle: 0.38,
@@ -49,26 +49,26 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponStats> = {
   SNIPER: {
     name: 'Sniper Rifle',
     nameKo: '저격 스나이퍼',
-    bulletSpeed: 1700,
-    cooldown: 1.20,
-    impulse: 1350,
-    damage: 70,
-    maxAmmo: 3,
-    range: 980,
+    bulletSpeed: 1100, // 기존 1700 레이저에서 회피 가능한 1100으로 조정
+    cooldown: 1.40,
+    impulse: 150, // 기존 1350의 원샷 낙사 제거 (4발 명중 시 치명타)
+    damage: 25, // 4발 타격 시 사망 (100 HP)
+    maxAmmo: 4,
+    range: 750,
     pelletCount: 1,
     spreadAngle: 0,
-    bulletRadius: 6,
+    bulletRadius: 5.5,
     color: '#ec4899' // pink laser
   },
   MACHINEGUN: {
     name: 'Rapid Machinegun',
     nameKo: '연사 머신건',
-    bulletSpeed: 860,
+    bulletSpeed: 820,
     cooldown: 0.08,
-    impulse: 160,
-    damage: 9,
-    maxAmmo: 35,
-    range: 480,
+    impulse: 12, // 연사 피격 시 점진적 밀림
+    damage: 4.0, // 25발 적중 시 사망
+    maxAmmo: 40,
+    range: 450,
     pelletCount: 1,
     spreadAngle: 0.08,
     bulletRadius: 3.5,

@@ -89,6 +89,10 @@ export class NetworkManager {
 
   private setupGuestConnection(conn: DataConnection): void {
     const registerGuest = () => {
+      const existing = this.guestConnections.get(conn.peer);
+      if (existing && existing !== conn) {
+        try { existing.close(); } catch {}
+      }
       if (this.guestConnections.size >= 9) {
         conn.close();
         return;
@@ -146,16 +150,15 @@ export class NetworkManager {
         const connectionTimeout = setTimeout(() => {
           if (!isResolved) {
             this.disconnect();
-            reject(new Error(`방(${this.currentRoomCode})을 찾을 수 없습니다. 룸 코드가 올바른지 확인하세요.`));
+            reject(new Error(`방(${this.currentRoomCode}) 연결 시간 초과. 통신망 상태를 확인하고 다시 시도하세요.`));
           }
-        }, 9000);
+        }, 20000);
 
         this.peer.on('open', (id) => {
           this.myPeerId = id;
 
-          // reliable: true 로 안정적 데이터 채널 오픈
+          // 표준 SCTP 기반 안정적 데이터 채널 오픈
           const conn = this.peer!.connect(hostPeerId, {
-            reliable: true,
             serialization: 'json'
           });
           this.hostConnection = conn;
@@ -164,7 +167,7 @@ export class NetworkManager {
             isResolved = true;
             clearTimeout(connectionTimeout);
 
-            // 접속 성공 시 C2S_JOIN 전송 (신뢰성을 위해 0.5초 간격으로 2회 연속 보장)
+            // 접속 성공 시 C2S_JOIN 전송 (신뢰성을 위해 0.4초 간격으로 2회 연속 보장)
             const joinPacket = {
               type: 'C2S_JOIN' as const,
               id: this.myPeerId,
@@ -174,7 +177,7 @@ export class NetworkManager {
             conn.send(joinPacket);
             setTimeout(() => {
               if (conn.open) conn.send(joinPacket);
-            }, 500);
+            }, 400);
 
             resolve();
           });
