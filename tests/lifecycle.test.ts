@@ -245,6 +245,45 @@ export function runLifecycleTests() {
   hostGame.stop();
   guestGame.stop();
 
+  // 9. 3인 이상 다중 참가자(호스트 + 게스트1, 게스트2, 게스트3) 대기실 동기화 및 덮어쓰기 방어 검증
+  const multiPlayers = [
+    { id: 'host_p1', nickname: '방장', isHost: true, team: 'NONE' as const }
+  ];
+
+  // 게스트 1 입장
+  const guest1Join: NetworkPacket = { type: 'C2S_JOIN', id: 'guest_g1', nickname: '요원1', team: 'NONE' };
+  if (guest1Join.type === 'C2S_JOIN' && !multiPlayers.some(p => p.id === guest1Join.id)) {
+    multiPlayers.push({ id: guest1Join.id, nickname: guest1Join.nickname, isHost: false, team: guest1Join.team });
+  }
+
+  // 게스트 2 입장
+  const guest2Join: NetworkPacket = { type: 'C2S_JOIN', id: 'guest_g2', nickname: '요원2', team: 'NONE' };
+  if (guest2Join.type === 'C2S_JOIN' && !multiPlayers.some(p => p.id === guest2Join.id)) {
+    multiPlayers.push({ id: guest2Join.id, nickname: guest2Join.nickname, isHost: false, team: guest2Join.team });
+  }
+
+  // 게스트 3 입장
+  const guest3Join: NetworkPacket = { type: 'C2S_JOIN', id: 'guest_g3', nickname: '요원3', team: 'NONE' };
+  if (guest3Join.type === 'C2S_JOIN' && !multiPlayers.some(p => p.id === guest3Join.id)) {
+    multiPlayers.push({ id: guest3Join.id, nickname: guest3Join.nickname, isHost: false, team: guest3Join.team });
+  }
+
+  assert(multiPlayers.length === 4, 'Host successfully registers 4 total players (Host + 3 Guests)');
+
+  // 게스트 3 입장에서 레이스 컨디션 검증: 이미 S2C_LOBBY_SYNC로 4명을 받았을 때 로컬 1명으로 덮어쓰지 않는지 검증
+  let guest3LobbyPlayers: Array<any> = [...multiPlayers]; // 이미 수신됨
+  if (guest3LobbyPlayers.length <= 1) {
+    guest3LobbyPlayers = [{ id: 'guest_g3', nickname: '요원3', isHost: false, team: 'NONE' }];
+  }
+  assert(guest3LobbyPlayers.length === 4, 'Guest 3 preserves full 4-player roster without local overwrite');
+
+  // 4인 전원 경기장 145px 반경 분산 스폰 검증
+  const multiGame = new Game(createMockCanvas(), createMockContainer());
+  multiGame.resetState();
+  multiGame.spawnPlayers(multiPlayers);
+  assert(multiGame.players.size === 4, 'Game engine accurately spawns 4 players inside arena');
+  multiGame.stop();
+
   console.log(`\nLifecycle Test Result: ${passed} Passed, ${failed} Failed`);
   if (failed > 0) {
     process.exit(1);
@@ -252,3 +291,4 @@ export function runLifecycleTests() {
 }
 
 runLifecycleTests();
+

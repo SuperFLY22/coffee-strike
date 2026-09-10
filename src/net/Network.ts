@@ -9,11 +9,30 @@ export interface NetworkCallbacks {
   onError?: (err: any) => void;
 }
 
-const ICE_SERVERS = [
+const ICE_SERVERS: RTCIceServer[] = [
+  // Google Public STUN
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' }
+  // Cloudflare STUN
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  // OpenRelay Public STUN & Free TURN (모바일 셀룰러 Symmetric NAT 릴레이 보장)
+  { urls: 'stun:openrelay.metered.ca:80' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelay',
+    credential: 'openrelay'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelay',
+    credential: 'openrelay'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay'
+  }
 ];
 
 export class NetworkManager {
@@ -54,12 +73,12 @@ export class NetworkManager {
           config: { iceServers: ICE_SERVERS }
         });
 
-        // 10초 타임아웃
+        // 12초 타임아웃
         const timeout = setTimeout(() => {
           if (!isResolved) {
             reject(new Error('시그널링 서버 연결 시간 초과. 네트워크 상태를 확인하세요.'));
           }
-        }, 10000);
+        }, 12000);
 
         this.peer.on('open', (id) => {
           isResolved = true;
@@ -91,9 +110,13 @@ export class NetworkManager {
     const registerGuest = () => {
       const existing = this.guestConnections.get(conn.peer);
       if (existing && existing !== conn) {
-        try { existing.close(); } catch {}
+        try {
+          // 구 연결 닫을 때 신규 연결이 delete되는 참사 방지를 위해 리스너 무효화
+          existing.on('close', () => {});
+          existing.close();
+        } catch {}
       }
-      if (this.guestConnections.size >= 9) {
+      if (this.guestConnections.size >= 9 && !this.guestConnections.has(conn.peer)) {
         conn.close();
         return;
       }
@@ -117,9 +140,12 @@ export class NetworkManager {
     });
 
     conn.on('close', () => {
-      this.guestConnections.delete(conn.peer);
-      if (this.callbacks.onPlayerDisconnected) {
-        this.callbacks.onPlayerDisconnected(conn.peer);
+      // 오직 현재 맵에 등록된 인스턴스가 본인일 때만 삭제 (구 세션 종료로 인한 덮어쓰기 삭제 방지)
+      if (this.guestConnections.get(conn.peer) === conn) {
+        this.guestConnections.delete(conn.peer);
+        if (this.callbacks.onPlayerDisconnected) {
+          this.callbacks.onPlayerDisconnected(conn.peer);
+        }
       }
     });
 
@@ -142,7 +168,8 @@ export class NetworkManager {
       let isResolved = false;
 
       try {
-        this.peer = new Peer({
+        const guestPeerId = `cs-g-${Math.random().toString(36).substring(2, 8)}-${Date.now().toString(36)}`;
+        this.peer = new Peer(guestPeerId, {
           debug: 1,
           config: { iceServers: ICE_SERVERS }
         });
@@ -167,17 +194,24 @@ export class NetworkManager {
             isResolved = true;
             clearTimeout(connectionTimeout);
 
-            // 접속 성공 시 C2S_JOIN 전송 (신뢰성을 위해 0.4초 간격으로 2회 연속 보장)
+            // 접속 성공 시 C2S_JOIN 전송 (0s, 0.3s, 0.8s 3회 연속 전송으로 패킷 유실 방어)
             const joinPacket = {
               type: 'C2S_JOIN' as const,
               id: this.myPeerId,
               nickname,
               team
             };
-            conn.send(joinPacket);
+            try { conn.send(joinPacket); } catch {}
             setTimeout(() => {
-              if (conn.open) conn.send(joinPacket);
-            }, 400);
+              if (conn.open) {
+                try { conn.send(joinPacket); } catch {}
+              }
+            }, 300);
+            setTimeout(() => {
+              if (conn.open) {
+                try { conn.send(joinPacket); } catch {}
+              }
+            }, 800);
 
             resolve();
           });

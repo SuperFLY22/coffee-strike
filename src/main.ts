@@ -118,12 +118,27 @@ class CoffeeStrikeApp {
           isCountingDown: this.game.isCountingDown,
           initialSnapshot: this.game.isRunning ? this.game.createWorldSnapshot() : undefined
         });
+
+        // 대기실 상태(게임 시작 전)일 때 모든 참가자에게 1초 주기로 대기실 명단 동기화 지속 보장 (모바일 다중 접속 패킷 유실 방지)
+        if (!this.game.isRunning && !this.isWaitingRematch) {
+          this.broadcastLobbySync();
+        }
       } else {
         this.network.sendToHost({
           type: 'C2S_HEARTBEAT',
           id: this.game.myPlayerId,
           isWaitingRematch: this.isWaitingRematch
         });
+
+        // 게스트가 대기실 상태인데 플레이어 목록이 아직 1명 이하(본인뿐이거나 비어있음)인 경우 C2S_JOIN 재전송 요청
+        if (!this.game.isRunning && !this.isWaitingRematch && this.lobbyPlayers.length <= 1 && this.network.myPeerId) {
+          this.network.sendToHost({
+            type: 'C2S_JOIN',
+            id: this.network.myPeerId,
+            nickname: this.myNickname,
+            team: this.myTeam
+          });
+        }
       }
     }, 1000);
   }
@@ -204,15 +219,27 @@ class CoffeeStrikeApp {
     try {
       await this.network.joinRoom(roomCode, nickname, team);
       this.game.myPlayerId = this.network.myPeerId;
-      this.lobbyPlayers = [
-        { id: this.network.myPeerId, nickname, isHost: false, team }
-      ];
+
       this.currentOptions = {
         ...DEFAULT_ROOM_OPTIONS,
         gameMode: team === 'NONE' ? 'FFA' : 'TEAM'
       };
 
-      this.lobbyUI.renderWaitingRoom(roomCode, false, this.lobbyPlayers, this.currentOptions);
+      // 호스트로부터 이미 S2C_LOBBY_SYNC를 수신한 경우 기존 명단 보존, 없는 경우 임시 등록
+      if (this.lobbyPlayers.length > 1) {
+        this.lobbyUI.renderWaitingRoom(roomCode, false, this.lobbyPlayers, this.currentOptions);
+      } else {
+        this.lobbyPlayers = [
+          { id: this.network.myPeerId, nickname, isHost: false, team }
+        ];
+        this.lobbyUI.renderLoading('대기실 동기화 중...', `[${roomCode}] 호스트와 참가 요원 명단 동기화 중`);
+        // 1.5초 이내에 호스트 동기화가 지연될 경우 기본 대기실 렌더링
+        setTimeout(() => {
+          if (!this.game.isRunning && !this.isWaitingRematch && this.isMultiplayer && !this.isHost) {
+            this.lobbyUI.renderWaitingRoom(roomCode, false, this.lobbyPlayers, this.currentOptions);
+          }
+        }, 1500);
+      }
     } catch (e: any) {
       alert(`접속 실패: ${e.message || e}`);
       this.lobbyUI.renderJoinRoom();
@@ -330,8 +357,12 @@ class CoffeeStrikeApp {
     switch (packet.type) {
       case 'C2S_JOIN': {
         if (this.isHost) {
-          // 중복 방지
-          if (!this.lobbyPlayers.some(p => p.id === packet.id)) {
+          // 중복 방지 및 기존 요원 닉네임/팀 갱신
+          const existingIdx = this.lobbyPlayers.findIndex(p => p.id === packet.id);
+          if (existingIdx >= 0) {
+            this.lobbyPlayers[existingIdx].nickname = packet.nickname;
+            this.lobbyPlayers[existingIdx].team = packet.team;
+          } else {
             this.lobbyPlayers.push({
               id: packet.id,
               nickname: packet.nickname,
@@ -347,12 +378,14 @@ class CoffeeStrikeApp {
             options: this.currentOptions,
             players: this.lobbyPlayers
           });
-          this.lobbyUI.renderWaitingRoom(
-            this.network.currentRoomCode,
-            true,
-            this.lobbyPlayers,
-            this.currentOptions
-          );
+          if (!this.game.isRunning) {
+            this.lobbyUI.renderWaitingRoom(
+              this.network.currentRoomCode,
+              true,
+              this.lobbyPlayers,
+              this.currentOptions
+            );
+          }
         }
         break;
       }
@@ -398,12 +431,14 @@ class CoffeeStrikeApp {
         if (!this.isHost) {
           this.currentOptions = packet.options;
           this.lobbyPlayers = packet.players;
-          this.lobbyUI.renderWaitingRoom(
-            packet.roomCode,
-            false,
-            this.lobbyPlayers,
-            packet.options
-          );
+          if (!this.game.isRunning && !this.isWaitingRematch) {
+            this.lobbyUI.renderWaitingRoom(
+              packet.roomCode,
+              false,
+              this.lobbyPlayers,
+              packet.options
+            );
+          }
         }
         break;
       }
